@@ -16,7 +16,7 @@ import {
 } from '@/lib/scheduledTimeQuarterHour'
 
 /** 投稿URLスラッグの固定先頭（続きは本文ベースで生成・編集） */
-const SLUG_PREFIX = 'ma-advisor-'
+const SLUG_PREFIX = 'erp-saas-'
 
 const SCHEDULE_HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
 const SCHEDULE_MINUTES_QUARTER = ['00', '15', '30', '45'] as const
@@ -274,7 +274,7 @@ export default function PublishResult({
                             onChange={e => handleSlugSuffixChange(e.target.value)}
                             className="flex-1 min-w-0 px-3 py-2.5 text-sm text-[#1A1A2E] font-mono border-0 focus:outline-none focus:ring-0"
                             placeholder="例: selection-tax-guide"
-                            aria-label="スラッグ（ma-advisor- の後ろ）"
+                            aria-label="スラッグ（erp-saas- の後ろ）"
                           />
                         </div>
                       )}

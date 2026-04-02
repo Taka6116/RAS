@@ -31,7 +31,7 @@ export default function LayoutWithSidebar({
       >
         <div className="px-5 py-4 border-b" style={{ borderColor: '#0088CC' }}>
           <div className="text-[23px] font-bold tracking-wide">RAS</div>
-          <div className="text-[14px] text-white/60 font-mono mt-0.5">
+          <div className="text-[14px] text-white font-mono mt-0.5">
             Rice Cloud Article System
           </div>
         </div>

@@ -24,10 +24,10 @@ import { normalizeWordPressTagsFromRequest } from './wordpressTags'
 import { decodeHtmlEntities } from './wpTagList'
 
 /** 監修者画像のデフォルト（WordPressメディアライブラリ・左の丸画像用） */
-const DEFAULT_SUPERVISOR_IMAGE_URL = 'https://nihon-teikei.co.jp/wp-content/uploads/2026/03/3159097ae625791c1a400e6900330153.png'
+const DEFAULT_SUPERVISOR_IMAGE_URL = ''
 
 /** 旧S3の監修者画像URL（このURLの場合はWordPressのURLに差し替える） */
-const LEGACY_S3_SUPERVISOR_PATTERN = /data-for-nas\.s3\.ap-northeast-1\.amazonaws\.com\/pictures\//i
+const LEGACY_S3_SUPERVISOR_PATTERN = /data-for-ras\.s3\.ap-northeast-1\.amazonaws\.com\/pictures\//i
 
 /** URLが http:// の場合は https:// に変換（Mixed Content 防止） */
 function forceHttps(url: string): string {
@@ -63,11 +63,9 @@ export function getSupervisorImageUrlForWordPress(): string {
  * 環境変数 NEXT_PUBLIC_CLOUDFRONT_URL があればCloudFront経由、なければS3直接URLを返す
  */
 function getCtaBannerImageUrl(): string {
-  const cloudFrontUrl = process.env.NEXT_PUBLIC_CLOUDFRONT_URL?.trim();
-  if (cloudFrontUrl) {
-    return `${cloudFrontUrl}/data-for-nas/pictures/NTS+CTA+%E9%9B%BB%E8%A9%B1%E7%95%AA%E5%8F%B7%E4%BB%98%E3%81%8D.png`;
-  }
-  return 'https://data-for-nas.s3.ap-northeast-1.amazonaws.com/pictures/NTS+CTA+%E9%9B%BB%E8%A9%B1%E7%95%AA%E5%8F%B7%E4%BB%98%E3%81%8D.png';
+  const envUrl = process.env.RC_CTA_BANNER_IMAGE_URL?.trim();
+  if (envUrl) return envUrl;
+  return '';
 }
 
 /**
@@ -76,9 +74,15 @@ function getCtaBannerImageUrl(): string {
  */
 function buildCtaBannerHtml(): string {
   const imageUrl = getCtaBannerImageUrl();
+  if (!imageUrl) {
+    return `<div style="text-align:center;margin:40px 0;padding:20px;background:#E6F5FC;border-radius:12px;">
+  <p style="font-size:18px;font-weight:700;color:#0A2540;margin:0 0 12px;">ERP導入・業務改善のご相談はお気軽に</p>
+  <a href="https://www.rice-cloud.info/contact/" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 32px;background:#009AE0;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;">お問い合わせはこちら</a>
+</div>`;
+  }
   return `<div style="text-align:center;margin:40px 0;padding:0;">
-  <a href="https://nihon-teikei.co.jp/contact/" target="_blank" rel="noopener noreferrer" style="display:inline-block;text-decoration:none;">
-    <img src="${imageUrl}" alt="M&Aの専門家に無料で相談してみる - 03-6455-2940（10:00〜20:00 年中無休）" style="max-width:100%;width:700px;height:auto;border:none;border-radius:8px;" loading="lazy" />
+  <a href="https://www.rice-cloud.info/contact/" target="_blank" rel="noopener noreferrer" style="display:inline-block;text-decoration:none;">
+    <img src="${imageUrl}" alt="ERP導入のプロに無料で相談 — RICE CLOUD" style="max-width:100%;width:700px;height:auto;border:none;border-radius:8px;" loading="lazy" />
   </a>
 </div>`;
 }
@@ -144,7 +148,7 @@ async function uploadBase64ImageToWordPress(
 ): Promise<WordPressMediaUploadResult> {
   const buffer = Buffer.from(base64, 'base64');
   const ext = mimeType.split('/')[1] ?? 'png';
-  const fileName = `nas-image-${Date.now()}.${ext}`;
+  const fileName = `rc-image-${Date.now()}.${ext}`;
 
   const res = await fetch(`${wpUrl}/wp-json/wp/v2/media`, {
     method: 'POST',
@@ -200,7 +204,7 @@ function emphasizeListLabel(line: string): string {
 }
 
 /** プレビューと同一の見出し・本文スタイル（WordPress本文で使用） */
-const H2_STYLE = "font-size:22px;font-weight:900;margin:48px 0 16px;padding-bottom:8px;border-bottom:3px solid #0e357f;font-family:'Noto Sans JP',sans-serif;";
+const H2_STYLE = "font-size:22px;font-weight:900;margin:48px 0 16px;padding-bottom:8px;border-bottom:3px solid #009AE0;font-family:'Noto Sans JP',sans-serif;";
 const H3_STYLE = 'font-size:18px;font-weight:400;margin:32px 0 12px;color:#111;';
 const P_STYLE = 'margin-bottom:1.6em;';
 const UL_LIST_STYLE = 'list-style:none;padding-left:0;margin:16px 0;';
@@ -215,7 +219,7 @@ const STANDALONE_H2_REGEXES: RegExp[] = [
   /^結論要約$/,
   /^よくある質問/,
   /^FAQ\b/i,
-  /^日本提携支援(?:（NTS）)?ならではの視点(（独自性）)?$/,
+  /^RICE CLOUD(?:（ライスクラウド）)?ならではの視点(（独自性）)?$/,
 ];
 
 /** 【まとめ】等の h2 表示テキスト（装飾括弧のみ除去。見出しに本文が続く行はそのまま） */
@@ -540,29 +544,23 @@ function buildArticleSchema(
     'dateModified': options?.scheduledDate?.slice(0, 10) || new Date().toISOString().split('T')[0],
     'author': [
       {
-        '@type': 'Person',
-        'name': '大野 駿介',
-        'jobTitle': '代表取締役',
-        'worksFor': {
-          '@type': 'Organization',
-          'name': '株式会社日本提携支援',
-          'url': 'https://nihon-teikei.co.jp',
-        },
-        'description': '過去1,000件超のM&A相談、50件超のアドバイザリー契約、15組超のM&A成約組数を担当。(株)日本M&Aセンターにて、年間最多アドバイザリー契約受賞経験あり。',
+        '@type': 'Organization',
+        'name': '株式会社RICE CLOUD',
+        'url': 'https://www.rice-cloud.info',
       },
     ],
     'publisher': {
       '@type': 'Organization',
-      'name': '株式会社日本提携支援',
-      'url': 'https://nihon-teikei.co.jp',
+      'name': '株式会社RICE CLOUD',
+      'url': 'https://www.rice-cloud.info',
       'logo': {
         '@type': 'ImageObject',
-        'url': 'https://nihon-teikei.co.jp/wp-content/themes/nihonteikei/assets/images/logo.png',
+        'url': 'https://www.rice-cloud.info/wp-content/themes/webinus-template/assets/images/logo.png',
       },
     },
     'mainEntityOfPage': {
       '@type': 'WebPage',
-      '@id': `https://nihon-teikei.co.jp/news/${slug}/`,
+      '@id': `https://www.rice-cloud.info/column/${slug}/`,
     },
     'about': {
       '@type': 'Thing',
@@ -596,7 +594,7 @@ function buildFaqAccordionHtml(faqs: Array<{ question: string; answer: string }>
       const question = faq.question.replace(/\*\*/g, '');
       const answerHtml = faq.answer.replace(/\*\*/g, '').replace(/\n/g, '<br>');
       return `
-<details class="nts-faq-item" style="border:1px solid #E2E8F0;border-radius:12px;padding:12px 16px;background:#FFFFFF;">
+<details class="rc-faq-item" style="border:1px solid #E2E8F0;border-radius:12px;padding:12px 16px;background:#FFFFFF;">
   <summary style="list-style:none;cursor:pointer;font-weight:700;color:#1A1A2E;display:flex;align-items:center;justify-content:space-between;outline:none;">
     <span>${question}</span>
     <span style="margin-left:12px;font-size:18px;line-height:1;color:#94A3B8;">＋</span>
@@ -609,9 +607,9 @@ function buildFaqAccordionHtml(faqs: Array<{ question: string; answer: string }>
     .join('\n');
 
   return `
-<div class="nts-faq" style="margin:40px 0;">
+<div class="rc-faq" style="margin:40px 0;">
   <h2 id="faq" style="${H2_STYLE}">よくある質問（FAQ）</h2>
-  <div class="nts-faq-list" style="display:flex;flex-direction:column;gap:12px;">
+  <div class="rc-faq-list" style="display:flex;flex-direction:column;gap:12px;">
 ${itemsHtml}
   </div>
 </div>`.trim();
@@ -652,7 +650,7 @@ function stripLeadingSupervisorText(content: string): string {
       i++;
       continue;
     }
-    if (/^監修者[：:]\s*/.test(trimmed) || /^実績[：:]\s*/.test(trimmed) || /^株式会社日本提携支援\s+代表/.test(trimmed) || /^\(株\)日本M&Aセンター/.test(trimmed)) {
+    if (/^監修者[：:]\s*/.test(trimmed) || /^実績[：:]\s*/.test(trimmed)) {
       i++;
       continue;
     }
@@ -710,16 +708,12 @@ function generateExcerpt(content: string): string {
 function linkifyCtaUrls(html: string): string {
   return html
     .replace(
-      /導入事例はこちらから\s+https?:\/\/nihon-teikei\.co\.jp\/news\/casestudy\/?/g,
-      '<a href="https://nihon-teikei.co.jp/news/casestudy/">導入事例はこちらから</a>'
+      /導入事例はこちらから\s+https?:\/\/www\.rice-cloud\.info\/casestudy\/?/g,
+      '<a href="https://www.rice-cloud.info/casestudy/">導入事例はこちらから</a>'
     )
     .replace(
-      /待っているだけでオファーが届くM&Aオファーはこちら\s+https?:\/\/nihon-teikei\.com\/ma-offer/g,
-      '<a href="https://nihon-teikei.com/ma-offer">待っているだけでオファーが届くM&Aオファーはこちら</a>'
-    )
-    .replace(
-      /待っているだけでオファーが届くM&amp;Aオファーはこちら\s+https?:\/\/nihon-teikei\.com\/ma-offer/g,
-      '<a href="https://nihon-teikei.com/ma-offer">待っているだけでオファーが届くM&amp;Aオファーはこちら</a>'
+      /お問い合わせはこちら\s+https?:\/\/www\.rice-cloud\.info\/contact\/?/g,
+      '<a href="https://www.rice-cloud.info/contact/">お問い合わせはこちら</a>'
     );
 }
 
@@ -787,7 +781,7 @@ export function buildPostContent(
   const escapedTitle = payload.title.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const bodyTopImageBlock =
     options?.bodyTopImageUrl
-      ? `<img src="${options.bodyTopImageUrl}" style="width:100%;height:auto;margin-bottom:32px;display:block;" alt="${escapedTitle} — 株式会社日本提携支援" />`
+      ? `<img src="${options.bodyTopImageUrl}" style="width:100%;height:auto;margin-bottom:32px;display:block;" alt="${escapedTitle} — 株式会社RICE CLOUD" />`
       : '';
 
   // 1-2. 監修者ブロック（プレビューと同一HTML＝supervisorBlock.tsで単一ソース化）
@@ -822,7 +816,7 @@ export function buildPostContent(
 
   // 4. 結合（本文 → FAQアコーディオン → Article Schema → FAQ Schema）
   const parts = [
-    `<!-- NAS Generated Content -->`,
+    `<!-- RAS Generated Content -->`,
     fullBody,
     faqAccordionHtml,
     articleSchema,
