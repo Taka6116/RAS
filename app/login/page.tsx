@@ -9,6 +9,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [debugInfo, setDebugInfo] = useState('')
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -21,12 +22,12 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       })
       const data = await res.json().catch(() => ({}))
+      if (data.debug) {
+        setDebugInfo(JSON.stringify(data.debug, null, 2))
+      }
       if (!res.ok) {
         const msg = data.error ?? 'ログインに失敗しました'
-        const debug = data.debug
-          ? ` [デバッグ: ${JSON.stringify(data.debug)}]`
-          : ''
-        setError(msg + debug)
+        setError(msg)
         return
       }
       router.push('/')
@@ -89,6 +90,9 @@ export default function LoginPage() {
           </div>
           {error && (
             <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
+          )}
+          {debugInfo && (
+            <pre className="text-xs text-gray-500 bg-gray-100 rounded-lg px-3 py-2 overflow-auto max-h-40">{debugInfo}</pre>
           )}
           <button
             type="submit"

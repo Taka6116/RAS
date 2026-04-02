@@ -55,21 +55,36 @@ export async function POST(request: NextRequest) {
   const matched = accounts.some(a => a.email === inputEmail && a.password === inputPassword)
 
   if (!matched) {
-    const res: { error: string; debug?: Record<string, number> } = {
+    return NextResponse.json({
       error: 'メールアドレスまたはパスワードが正しくありません',
-    }
-    if (process.env.NODE_ENV === 'development') {
-      res.debug = {
+      debug: {
         登録アカウント数: accounts.length,
         入力メール長: inputEmail.length,
         入力PW長: inputPassword.length,
-      }
-    }
-    return NextResponse.json(res, { status: 401 })
+        AUTH_SECRET設定済: !!(process.env.AUTH_SECRET && process.env.AUTH_SECRET.length >= 16),
+        AUTH_SECRET長: process.env.AUTH_SECRET?.length ?? 0,
+      },
+    }, { status: 401 })
+  }
+
+  const secret = process.env.AUTH_SECRET
+  if (!secret || secret.length < 16) {
+    return NextResponse.json({
+      error: 'AUTH_SECRET が未設定または短すぎます',
+      debug: { AUTH_SECRET長: secret?.length ?? 0 },
+    }, { status: 500 })
   }
 
   const cookieValue = createAuthCookie()
-  const res = NextResponse.json({ ok: true })
+  const res = NextResponse.json({
+    ok: true,
+    debug: {
+      cookieName: getAuthCookieName(),
+      cookieLength: cookieValue.length,
+      secure: process.env.NODE_ENV === 'production',
+      NODE_ENV: process.env.NODE_ENV,
+    },
+  })
   res.cookies.set(getAuthCookieName(), cookieValue, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
