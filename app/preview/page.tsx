@@ -8,34 +8,29 @@ import { getSupervisorBlockHtml } from '@/lib/supervisorBlock'
 
 const DUMMY_ARTICLES = [
   {
-    date: '2025.12.23',
-    category: '導入事例',
-    title: '【M&A成約インタビュー vol.4】半世紀の建設キャリアを未来へつなぐ',
+    date: '2024.11.15',
+    category: 'ERPの基礎',
+    title: 'ERP導入で失敗しないために！ERPシステムを比較する5つのポイント',
   },
   {
-    date: '2025.12.12',
-    category: 'お知らせ',
-    title: '【登壇報告】弊社代表・大野 駿介が「財務の戦略デザイン研究会」にて講演しました',
+    date: '2024.06.28',
+    category: 'ERPの基礎',
+    title: 'ズバリ解説！ERPとは何か、今多くの企業が注目するワケ',
   },
 ]
 
-/** 監修者・丸部分のお顔画像（WordPressメディアライブラリ）。プレビューではこのURLを直接表示。 */
-const SUPERVISOR_FACE_IMAGE_URL = 'http://nihon-teikei.co.jp/wp-content/uploads/2026/03/3159097ae625791c1a400e6900330153.png'
+const SUPERVISOR_FACE_IMAGE_URL = ''
 
-/** プレビュー用CTAバナーHTML */
 function getPreviewCtaBannerHtml(): string {
-  const cloudFrontUrl = process.env.NEXT_PUBLIC_CLOUDFRONT_URL?.trim()
-  const bannerUrl = cloudFrontUrl
-    ? `${cloudFrontUrl}/data-for-nas/pictures/NTS+CTA+%E9%9B%BB%E8%A9%B1%E7%95%AA%E5%8F%B7%E4%BB%98%E3%81%8D.png`
-    : 'https://data-for-nas.s3.ap-northeast-1.amazonaws.com/pictures/NTS+CTA+%E9%9B%BB%E8%A9%B1%E7%95%AA%E5%8F%B7%E4%BB%98%E3%81%8D.png'
-  return `<div style="text-align:center;margin:40px 0;padding:0;"><a href="https://nihon-teikei.co.jp/contact/" target="_blank" rel="noopener noreferrer" style="display:inline-block;text-decoration:none;"><img src="${bannerUrl}" alt="M&Aの専門家に無料で相談してみる" style="max-width:100%;width:700px;height:auto;border:none;border-radius:8px;" loading="lazy" /></a></div>`
+  return `<div style="text-align:center;margin:40px 0;padding:20px;background:#E6F5FC;border-radius:12px;">
+  <p style="font-size:18px;font-weight:700;color:#0A2540;margin:0 0 12px;">ERP導入・業務改善のご相談はお気軽に</p>
+  <a href="https://www.rice-cloud.info/contact/" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 32px;background:#3EA8D8;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;">お問い合わせはこちら</a>
+</div>`
 }
 
-/** プレビュー用: CTAバナーを「まとめ」h2の直前に挿入 */
 function insertCtaBannersForPreview(html: string): string {
   const cta = getPreviewCtaBannerHtml()
 
-  // 優先: 「まとめ」を含む h2 タグの直前に挿入
   const matomeRegex = /<h2[^>]*>[^<]*まとめ[^<]*<\/h2>/gi
   const matomeMatch = matomeRegex.exec(html)
   if (matomeMatch) {
@@ -48,7 +43,6 @@ function insertCtaBannersForPreview(html: string): string {
     return html.slice(0, matomeBlockMatch.index) + cta + '\n' + html.slice(matomeBlockMatch.index)
   }
 
-  // フォールバック: 最後の h2 の直前に挿入
   const h2Regex = /<h2[\s>]/gi
   let match: RegExpExecArray | null
   const positions: number[] = []
@@ -70,7 +64,7 @@ function formatContent(content: string, imageUrl: string): string {
 
   const supervisorBlock = getSupervisorBlockHtml(SUPERVISOR_FACE_IMAGE_URL)
 
-  const H2_STYLE = "font-size:22px;font-weight:900;margin:48px 0 16px;padding-bottom:8px;border-bottom:3px solid #0e357f;font-family:'Noto Sans JP',sans-serif;"
+  const H2_STYLE = "font-size:20px;font-weight:700;margin:48px 0 16px;padding:14px 20px;background:#1a2744;color:#fff;border-radius:4px;font-family:'Noto Sans JP',sans-serif;"
   const H3_STYLE = 'font-size:18px;font-weight:400;margin:32px 0 12px;color:#111;'
   const P_STYLE = 'margin-bottom:1.6em;'
 
@@ -128,16 +122,22 @@ function formatContent(content: string, imageUrl: string): string {
 
   bodyHtml = bodyHtml
     .replace(
-      /導入事例はこちらから\s+https?:\/\/nihon-teikei\.co\.jp\/news\/casestudy\/?/g,
-      '<a href="https://nihon-teikei.co.jp/news/casestudy/" target="_blank" rel="noopener noreferrer" style="color:#0e357f;text-decoration:underline;">導入事例はこちらから</a>'
+      /導入事例はこちらから\s+https?:\/\/www\.rice-cloud\.info\/casestudy\/?/g,
+      '<a href="https://www.rice-cloud.info/casestudy/" target="_blank" rel="noopener noreferrer" style="color:#3EA8D8;text-decoration:underline;">導入事例はこちらから</a>'
     )
     .replace(
-      /待っているだけでオファーが届くM&Aオファーはこちら\s+https?:\/\/nihon-teikei\.com\/ma-offer/g,
-      '<a href="https://nihon-teikei.com/ma-offer" target="_blank" rel="noopener noreferrer" style="color:#0e357f;text-decoration:underline;">待っているだけでオファーが届くM&Aオファーはこちら</a>'
+      /お問い合わせはこちら\s+https?:\/\/www\.rice-cloud\.info\/contact\/?/g,
+      '<a href="https://www.rice-cloud.info/contact/" target="_blank" rel="noopener noreferrer" style="color:#3EA8D8;text-decoration:underline;">お問い合わせはこちら</a>'
     )
 
   bodyHtml = insertCtaBannersForPreview(bodyHtml)
 
+  if (imageHtml) {
+    const firstH2 = bodyHtml.indexOf('<h2 ')
+    if (firstH2 > 0) {
+      return bodyHtml.slice(0, firstH2) + imageHtml + supervisorBlock + bodyHtml.slice(firstH2)
+    }
+  }
   return imageHtml + supervisorBlock + bodyHtml
 }
 
@@ -216,7 +216,7 @@ function PreviewContent() {
       } else if (step === 3) {
         router.push(`${base}3`)
       } else if (step === 4) {
-        // 現在プレビュー画面のためそのまま（必要なら同一URLでリロードしない限り何もしない）
+        // current
       } else if (step === 5) {
         handlePublish()
       }
@@ -226,7 +226,7 @@ function PreviewContent() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#fff' }}>
-      {/* ① 固定バナー（常に表示・投稿画面へ・戻る） */}
+      {/* 固定バナー（プレビューモード） */}
       <div
         style={{
           position: 'fixed',
@@ -279,7 +279,7 @@ function PreviewContent() {
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{
-                    backgroundColor: '#1a9a7b',
+                    backgroundColor: '#3EA8D8',
                     border: 'none',
                     color: 'white',
                     padding: '10px 24px',
@@ -334,14 +334,14 @@ function PreviewContent() {
         </div>
       </div>
 
-      {/* バナー分のスペーサー + 2カラム（左：プレビュー本文 / 右：プロセス表示） */}
+      {/* メインコンテンツ + ステップインジケーター */}
       <div style={{ paddingTop: 56, display: 'flex', gap: 24, alignItems: 'flex-start' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-      {/* ② ヘッダー（クライアントサイト完全再現） */}
+
+      {/* ヘッダー（RICE CLOUDサイト再現 — ダークネイビー背景） */}
       <header
         style={{
-          backgroundColor: 'white',
-          borderBottom: '1px solid #e5e5e5',
+          backgroundColor: '#1a2744',
           padding: '0 24px',
           minHeight: 64,
           display: 'flex',
@@ -354,57 +354,47 @@ function PreviewContent() {
           gap: 16,
         }}
       >
-        {/* 左：NTSロゴ（API経由でSVGを配信） */}
         <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/api/rc-logo"
-            alt="NTS 日本提携支援"
-            style={{ height: 36, width: 'auto', display: 'block' }}
+            src="/logo-w.webp"
+            alt="株式会社ライスクラウド"
+            style={{ height: 40, width: 'auto', display: 'block', filter: 'brightness(10)' }}
           />
         </div>
 
-        {/* 中央：ナビゲーション・改行なし */}
         <nav
           style={{
             display: 'flex',
-            gap: 28,
+            gap: 24,
             fontSize: 13,
-            color: '#333',
-            fontWeight: 500,
+            color: 'rgba(255,255,255,0.9)',
+            fontWeight: 600,
             flexShrink: 0,
             whiteSpace: 'nowrap',
+            fontFamily: '"Noto Sans JP", sans-serif',
           }}
         >
           {[
-            '日本提携支援について',
-            '事業内容',
+            'TOP',
+            '会社案内',
             '導入事例',
+            'サービス',
             'お役立ち情報',
-            'ニュース',
+            'NEWS',
             '採用情報',
           ].map(item => (
-            <span key={item} style={{ cursor: 'pointer', color: '#222' }}>
+            <span key={item} style={{ cursor: 'pointer' }}>
               {item}
             </span>
           ))}
         </nav>
 
-        {/* 右：電話 + お問い合わせボタン・1行で表示 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexShrink: 0, whiteSpace: 'nowrap' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-                <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z" stroke="#0e357f" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-              </svg>
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#0e357f' }}>03-6667-0221</span>
-            </div>
-            <span style={{ fontSize: 11, color: '#666', marginTop: 2 }}>電話相談受付:10:00-20:00(年中無休)</span>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
           <button
             type="button"
             style={{
-              backgroundColor: '#0e357f',
+              backgroundColor: '#2ecc71',
               color: 'white',
               padding: '10px 20px',
               borderRadius: 6,
@@ -426,64 +416,50 @@ function PreviewContent() {
         </div>
       </header>
 
-      {/* ③ ファーストビュー（NEWSヒーロー） */}
-      <section style={{ backgroundColor: '#f5f4f0', padding: '60px 0' }}>
+      {/* ファーストビュー（COLUMN / お役立ち情報詳細） */}
+      <section style={{ backgroundColor: '#f5f5f5', padding: '48px 0' }}>
         <div
           style={{
             maxWidth: 1200,
             margin: '0 auto',
             padding: '0 40px',
-            position: 'relative',
           }}
         >
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              fontSize: 80,
-              fontWeight: 900,
-              color: 'rgba(0,0,0,0.04)',
-              fontFamily: 'neue-haas-grotesk-display, Arial',
-              overflow: 'hidden',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Hearts and future to the future Hearts
-          </div>
           <h1 style={{ position: 'relative' }}>
             <span
               style={{
                 display: 'block',
-                fontSize: 56,
-                fontWeight: 900,
-                color: '#1a9a7b',
-                fontFamily:
-                  '"neue-haas-grotesk-display", "HelveticaNeue", Arial, sans-serif',
-                lineHeight: 1,
+                fontSize: 14,
+                color: '#666',
+                fontWeight: 500,
+                fontFamily: '"Noto Sans JP", sans-serif',
               }}
             >
-              NEWS
+              お役立ち情報詳細
             </span>
             <span
               style={{
                 display: 'block',
-                fontSize: 16,
-                color: '#444',
-                marginTop: 8,
+                fontSize: 40,
+                fontWeight: 700,
+                color: '#333',
+                fontFamily: 'Roboto, Arial, sans-serif',
+                letterSpacing: '0.05em',
+                marginTop: 4,
               }}
             >
-              ニュース
+              COLUMN
             </span>
           </h1>
           <nav
-            style={{ marginTop: 16, fontSize: 13, color: '#666' }}
+            style={{ marginTop: 16, fontSize: 13, color: '#666', fontFamily: '"Noto Sans JP", sans-serif' }}
             aria-label="パンくず"
           >
-            <span style={{ color: '#0e357f', cursor: 'pointer' }}>TOP</span>
+            <span style={{ color: '#3EA8D8', cursor: 'pointer' }}>トップ</span>
             {' > '}
-            <span style={{ color: '#0e357f', cursor: 'pointer' }}>ニュース</span>
+            <span style={{ color: '#3EA8D8', cursor: 'pointer' }}>お役立ち情報</span>
+            {' > '}
+            <span style={{ color: '#3EA8D8', cursor: 'pointer' }}>ERPの基礎</span>
             {' > '}
             <span>
               {title.length > 40 ? `${title.slice(0, 40)}...` : title}
@@ -492,360 +468,245 @@ function PreviewContent() {
         </div>
       </section>
 
-      {/* ④ 記事メインコンテンツ */}
+      {/* 記事メインコンテンツ（2カラム：メイン + サイドバー） */}
       <section style={{ padding: '0 0 80px' }}>
         <div
           style={{
-            maxWidth: 960,
+            maxWidth: 1100,
             margin: '48px auto',
             padding: '0 24px',
+            display: 'flex',
+            gap: 40,
+            alignItems: 'flex-start',
           }}
         >
-          <header style={{ marginBottom: 32 }}>
+          {/* === 左：メインカラム === */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <header style={{ marginBottom: 32 }}>
+              {/* タグ → タイトル → 日付（実サイト順） */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+                {['ERP', '業務改善', 'データ分析', 'SaaS', '基礎知識'].map(tag => (
+                  <span
+                    key={tag}
+                    style={{
+                      display: 'inline-block',
+                      padding: '4px 14px',
+                      borderRadius: 4,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: 'white',
+                      backgroundColor: '#1a2744',
+                    }}
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+              <h1
+                style={{
+                  fontSize: 26,
+                  fontWeight: 900,
+                  lineHeight: 1.6,
+                  color: '#111',
+                  marginBottom: 12,
+                  fontFamily: '"Noto Sans JP", sans-serif',
+                }}
+              >
+                {title}
+              </h1>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                <time style={{ color: '#666', fontWeight: 500, fontSize: 14 }}>
+                  {date}
+                </time>
+              </div>
+            </header>
+
+            {/* 記事本文 */}
+            <div
+              style={{
+                fontFamily: '"Noto Sans JP", sans-serif',
+                fontSize: 16,
+                lineHeight: 1.9,
+                color: '#333',
+              }}
+              dangerouslySetInnerHTML={{ __html: formattedContent }}
+            />
+
+            {/* 記事末タグバッジ */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 48, paddingTop: 24, borderTop: '1px solid #e5e5e5' }}>
+              {['ERP', '業務改善', 'データ分析', 'SaaS', '基礎知識'].map(tag => (
+                <span
+                  key={tag}
+                  style={{
+                    display: 'inline-block',
+                    padding: '5px 14px',
+                    borderRadius: 4,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: 'white',
+                    backgroundColor: '#1a2744',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+
+            {/* ページネーション */}
             <div
               style={{
                 display: 'flex',
+                justifyContent: 'space-between',
                 alignItems: 'center',
-                gap: 12,
-                marginBottom: 16,
-              }}
-            >
-              <time
-                style={{
-                  color: '#1a9a7b',
-                  fontWeight: 700,
-                  fontSize: 15,
-                }}
-              >
-                {date}
-              </time>
-              <span
-                style={{
-                  backgroundColor: '#1a9a7b',
-                  color: 'white',
-                  padding: '2px 12px',
-                  borderRadius: 3,
-                  fontSize: 13,
-                }}
-              >
-                {category}
-              </span>
-            </div>
-            <h1
-              style={{
-                fontSize: 28,
-                fontWeight: 900,
-                lineHeight: 1.6,
-                color: '#111',
-                marginBottom: 24,
+                marginTop: 32,
+                paddingTop: 20,
+                paddingBottom: 20,
+                borderTop: '1px solid #e5e5e5',
+                borderBottom: '1px solid #e5e5e5',
                 fontFamily: '"Noto Sans JP", sans-serif',
               }}
             >
-              {title}
-            </h1>
-            <ul
-              style={{
-                display: 'flex',
-                gap: 8,
-                listStyle: 'none',
-                padding: 0,
-                margin: 0,
-              }}
-            >
-              {[
-                { label: 'X', bg: '#000' },
-                { label: 'f', bg: '#1877f2' },
-                { label: 'B!', bg: '#00a4de' },
-                { label: 'in', bg: '#0077b5' },
-                { label: 'LINE', bg: '#06c755' },
-              ].map(({ label, bg }) => (
-                <li key={label}>
+              <span style={{ fontSize: 14, color: '#333', cursor: 'pointer' }}>
+                &laquo; 前の記事
+              </span>
+              <span style={{ fontSize: 14, color: '#333', cursor: 'pointer' }}>
+                次の記事 &raquo;
+              </span>
+            </div>
+
+            {/* こんなお役立ち情報もあります（2カラム） */}
+            <div style={{ marginTop: 48 }}>
+              <h2 style={{ marginBottom: 24, textAlign: 'center', fontSize: 20, fontWeight: 700, color: '#222', fontFamily: '"Noto Sans JP", sans-serif' }}>
+                こんなお役立ち情報もあります
+              </h2>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
+                {DUMMY_ARTICLES.map((article, i) => (
                   <div
+                    key={i}
                     style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: '50%',
-                      backgroundColor: bg,
-                      color: 'white',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 13,
-                      fontWeight: 700,
+                      backgroundColor: 'white',
+                      borderRadius: 4,
+                      overflow: 'hidden',
+                      border: '1px solid #e5e5e5',
                       cursor: 'pointer',
                     }}
                   >
-                    {label}
+                    <div
+                      style={{
+                        width: '100%',
+                        aspectRatio: '16/9',
+                        backgroundColor: '#f0f4f8',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 24,
+                        borderBottom: '1px solid #e5e5e5',
+                      }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src="/logo-w.webp"
+                        alt="RICE CLOUD"
+                        style={{ height: 28, width: 'auto', display: 'block', marginBottom: 4 }}
+                      />
+                      <span style={{ fontSize: 9, fontWeight: 600, color: '#3EA8D8', letterSpacing: '0.08em' }}>
+                        RICE CLOUD JAPAN
+                      </span>
+                    </div>
+                    <div style={{ padding: 16 }}>
+                      <p style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.6, color: '#111' }}>
+                        {article.title}
+                      </p>
+                    </div>
                   </div>
-                </li>
-              ))}
-            </ul>
-          </header>
-          <div
-            style={{
-              fontFamily: '"Noto Sans JP", sans-serif',
-              fontSize: 16,
-              lineHeight: 1.9,
-              color: '#333',
-            }}
-            dangerouslySetInnerHTML={{ __html: formattedContent }}
-          />
-        </div>
-      </section>
-
-      {/* ⑥ 最新記事グリッド（LATEST NEWS） */}
-      <section style={{ backgroundColor: '#f5f4f0', padding: '80px 0' }}>
-        <div
-          style={{
-            maxWidth: 1200,
-            margin: '0 auto',
-            padding: '0 40px',
-          }}
-        >
-          <h2 style={{ marginBottom: 24 }}>
-            <span
-              style={{
-                display: 'block',
-                fontSize: 40,
-                fontWeight: 900,
-                color: '#222',
-                fontFamily: '"neue-haas-grotesk-display", Arial',
-              }}
-            >
-              LATEST NEWS
-            </span>
-            <span style={{ fontSize: 14, color: '#666' }}>最新ニュース</span>
-          </h2>
-          {/* CATEGORY・TAG（見た目のみ） */}
-          <div style={{ marginBottom: 40 }}>
-            <div style={{ marginBottom: 16 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#222', display: 'block', marginBottom: 8 }}>CATEGORY</span>
-              <span style={{ fontSize: 14, color: '#333' }}>
-                すべて　インターン　導入事例　お役立ち情報　お知らせ
-              </span>
-            </div>
-            <div>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#222', display: 'block' }}>TAG</span>
+                ))}
+              </div>
             </div>
           </div>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              gap: 32,
-            }}
-          >
-            <div
-              style={{
-                backgroundColor: 'white',
-                borderRadius: 4,
-                overflow: 'hidden',
-                border: '2px solid #1a9a7b',
-              }}
-            >
-              <div
-                style={{
-                  backgroundColor: '#1a9a7b',
-                  color: 'white',
-                  textAlign: 'center',
-                  padding: '6px',
-                  fontSize: 12,
-                  fontWeight: 700,
-                }}
-              >
-                📍 この記事が表示されます
+
+          {/* === 右：サイドバー === */}
+          <div style={{ width: 260, flexShrink: 0, position: 'sticky', top: 130, fontFamily: '"Noto Sans JP", sans-serif' }}>
+            {/* 絞り込み検索 */}
+            <div style={{ marginBottom: 32, border: '1px solid #e0e0e0', borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{ backgroundColor: '#1a2744', color: 'white', padding: '12px 16px', fontSize: 14, fontWeight: 700, textAlign: 'center' }}>
+                絞り込み検索
               </div>
-              {imageUrl ? (
-                <img
-                  src={imageUrl}
-                  alt=""
-                  style={{
-                    width: '100%',
-                    aspectRatio: '16/9',
-                    objectFit: 'cover',
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: '100%',
-                    aspectRatio: '16/9',
-                    backgroundColor: '#ddd',
-                  }}
-                />
-              )}
               <div style={{ padding: 16 }}>
-                <div
-                  style={{
-                    color: '#1a9a7b',
-                    fontSize: 13,
-                    marginBottom: 8,
-                  }}
+                <select
+                  style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: '1px solid #ccc', borderRadius: 4, marginBottom: 16, color: '#333', background: 'white' }}
+                  defaultValue="column01"
                 >
-                  {date} {category}
-                </div>
-                <p
-                  style={{
-                    fontWeight: 700,
-                    fontSize: 15,
-                    lineHeight: 1.5,
-                    color: '#111',
-                  }}
-                >
-                  {title.length > 50 ? `${title.slice(0, 50)}...` : title}
-                </p>
-              </div>
-            </div>
-            {DUMMY_ARTICLES.map((article, i) => (
-              <div
-                key={i}
-                style={{
-                  backgroundColor: 'white',
-                  borderRadius: 4,
-                  overflow: 'hidden',
-                  opacity: 0.6,
-                }}
-              >
-                {/* 実際のサイト同様：白地＋NTSロゴ＋NIHON TEIKEI SHIEN */}
-                <div
+                  <option value="">カテゴリー</option>
+                  <option value="column01">ERPの基礎</option>
+                </select>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#333', marginBottom: 8 }}>タグ検索</div>
+                {['ERP', '業務改善', 'データ分析', 'SaaS', '基礎知識'].map(tag => (
+                  <label key={tag} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#333', marginBottom: 6, cursor: 'pointer' }}>
+                    <input type="checkbox" style={{ accentColor: '#1a2744' }} readOnly />
+                    {tag}
+                  </label>
+                ))}
+                <button
+                  type="button"
                   style={{
                     width: '100%',
-                    aspectRatio: '16/9',
-                    backgroundColor: 'white',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: 24,
-                    borderBottom: '1px solid #f0f0f0',
+                    marginTop: 12,
+                    padding: '10px 0',
+                    backgroundColor: '#1a2744',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: 4,
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: 'pointer',
                   }}
                 >
-                  <img
-                    src="/api/rc-logo"
-                    alt="NTS"
-                    style={{ height: 28, width: 'auto', display: 'block', marginBottom: 6 }}
-                  />
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 600,
-                      color: '#0e357f',
-                      letterSpacing: '0.08em',
-                    }}
-                  >
-                    NIHON TEIKEI SHIEN
-                  </span>
-                </div>
-                <div style={{ padding: 16 }}>
-                  <div
-                    style={{
-                      color: '#1a9a7b',
-                      fontSize: 13,
-                      marginBottom: 8,
-                    }}
-                  >
-                    {article.date} {article.category}
-                  </div>
-                  <p
-                    style={{
-                      fontWeight: 700,
-                      fontSize: 15,
-                      lineHeight: 1.5,
-                      color: '#111',
-                    }}
-                  >
-                    {article.title}
-                  </p>
-                </div>
+                  検索
+                </button>
               </div>
-            ))}
-          </div>
-          <div style={{ textAlign: 'right', marginTop: 24 }}>
-            <span
-              style={{
-                color: '#0e357f',
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              VIEW ALL →
-            </span>
+            </div>
+            {/* タグ一覧 */}
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#333', marginBottom: 12 }}>タグ一覧</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {[
+                  { name: 'ERP', count: 3 },
+                  { name: '業務改善', count: 3 },
+                  { name: 'データ分析', count: 3 },
+                  { name: 'SaaS', count: 3 },
+                  { name: '基礎知識', count: 3 },
+                ].map(tag => (
+                  <span
+                    key={tag.name}
+                    style={{
+                      display: 'inline-block',
+                      padding: '4px 10px',
+                      borderRadius: 4,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: 'white',
+                      backgroundColor: '#1a2744',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {tag.name} ({tag.count})
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ⑦ CONTACTセクション */}
-      <aside
-        style={{
-          backgroundColor: '#0e357f',
-          color: 'white',
-          padding: '80px 0',
-          textAlign: 'center',
-        }}
-      >
-        <h2 style={{ marginBottom: 24 }}>
-          <span
-            style={{
-              display: 'block',
-              fontSize: 40,
-              fontWeight: 900,
-              fontFamily: 'Arial',
-            }}
-          >
-            CONTACT
-          </span>
-          <span style={{ fontSize: 14, opacity: 0.8 }}>お問い合わせ</span>
-        </h2>
-        <hr
-          style={{
-            border: 'none',
-            borderTop: '1px solid rgba(255,255,255,0.2)',
-            margin: '24px auto',
-            width: 480,
-          }}
-        />
-        <p
-          style={{
-            fontSize: 22,
-            fontWeight: 700,
-            lineHeight: 1.8,
-            marginBottom: 32,
-          }}
-        >
-          あなたの企業の未来に、最適なパートナーを。
-          <br />
-          ご相談はこちらから。
-        </p>
-        <div style={{ marginBottom: 32 }}>
-          <div
-            style={{ fontSize: 13, opacity: 0.8, marginBottom: 8 }}
-          >
-            電話相談受付 : 10:00-20:00 (年中無休)
-          </div>
-        </div>
-        <button
-          type="button"
-          style={{
-            border: '2px solid white',
-            backgroundColor: 'transparent',
-            color: 'white',
-            padding: '14px 40px',
-            borderRadius: 28,
-            fontSize: 16,
-            cursor: 'pointer',
-            fontWeight: 700,
-          }}
-        >
-          相談・お問い合わせ →
-        </button>
-      </aside>
-
-      {/* ⑧ フッター */}
+      {/* フッター */}
       <footer
         style={{
-          backgroundColor: '#0a1f4a',
+          backgroundColor: '#222',
           color: 'white',
-          padding: '60px 40px 24px',
+          padding: '48px 40px 24px',
+          fontFamily: '"Noto Sans JP", sans-serif',
         }}
       >
         <div
@@ -854,49 +715,61 @@ function PreviewContent() {
             margin: '0 auto',
             display: 'flex',
             justifyContent: 'space-between',
-            marginBottom: 40,
+            marginBottom: 32,
+            flexWrap: 'wrap',
+            gap: 32,
           }}
         >
           <div>
-            <div
-              style={{ fontWeight: 900, fontSize: 20, marginBottom: 16 }}
-            >
-              株式会社日本提携支援
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo-w.webp"
+              alt="株式会社ライスクラウド"
+              style={{ height: 36, width: 'auto', display: 'block', marginBottom: 16, filter: 'brightness(10)' }}
+            />
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>
+              株式会社 RICE CLOUD（ライスクラウド）
             </div>
-            <p style={{ fontSize: 13, opacity: 0.6, lineHeight: 1.8 }}>
-              〒103-0006
+            <p style={{ fontSize: 13, opacity: 0.7, lineHeight: 1.8 }}>
+              〒336-0017
               <br />
-              東京都中央区日本橋富沢町10-11 TWG 日本橋イーストⅡ10階
-              <br />
-              TEL: 03-6667-0221
+              埼玉県さいたま市南区南浦和2丁目40-1 第２愛興ビル 3階
             </p>
           </div>
           <nav
             style={{
               display: 'flex',
-              gap: 48,
+              gap: 24,
               fontSize: 13,
               opacity: 0.8,
+              flexWrap: 'wrap',
+              alignItems: 'flex-start',
             }}
           >
-            {/* About / Service / Case Study / Column / News / Recruit */}
+            {['TOP', '会社案内', '導入事例', 'サービス', 'お役立ち情報', 'NEWS', '採用情報', 'お問い合わせ'].map(item => (
+              <span key={item} style={{ cursor: 'pointer' }}>{item}</span>
+            ))}
           </nav>
+        </div>
+        <div style={{ display: 'flex', gap: 24, fontSize: 12, opacity: 0.7, marginBottom: 16 }}>
+          <span style={{ cursor: 'pointer' }}>プライバシーポリシー</span>
+          <span style={{ cursor: 'pointer' }}>情報セキュリティ基本方針</span>
         </div>
         <hr
           style={{
             border: 'none',
-            borderTop: '1px solid rgba(255,255,255,0.1)',
-            marginBottom: 24,
+            borderTop: '1px solid rgba(255,255,255,0.15)',
+            marginBottom: 16,
           }}
         />
         <p
           style={{
-            textAlign: 'right',
+            textAlign: 'center',
             fontSize: 12,
             opacity: 0.5,
           }}
         >
-          Copyright © 日本提携支援. All rights reserved.
+          &copy; RICE CLOUD JAPAN All Rights Reserved.
         </p>
       </footer>
         </div>

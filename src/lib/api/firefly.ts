@@ -99,36 +99,32 @@ export async function generateImageWithFirefly(
 export function buildPrompt(title: string, content: string): string {
   const text = title + content.slice(0, 200)
 
-  const isContract = /契約|NDA|秘密保持|意向表明/.test(text)
-  const isFinance = /補助金|税制|融資|資金|節税|バリュエーション|企業価値/.test(text)
-  const isPMI = /PMI|統合|経営統合/.test(text)
-  const isSuccession = /後継者|引継|承継/.test(text)
-  const isMA = /M&A|買収|合併|仲介|売却/.test(text)
+  const isERP = /ERP|NetSuite|Dynamics|クラウドERP|基幹システム/.test(text)
+  const isDX = /DX|デジタル|業務改善|業務効率|自動化|ワークフロー/.test(text)
+  const isAgile = /アジャイル|短納期|スプリント|導入支援/.test(text)
+  const isAPI = /API|連携|SaaS|システム連携|データ連携/.test(text)
+  const isRecovery = /リカバリー|立て直し|失敗|頓挫|再構築/.test(text)
 
-  // 全テーマ共通：顔アップ禁止・引き画・手元・書類メイン
   let theme = ''
 
-  if (isContract) {
+  if (isERP) {
     theme =
-      'overhead flat-lay of business contract documents and fountain pen on white desk, professional corporate photography'
-  } else if (isFinance) {
+      'overhead flat-lay of laptop showing abstract ERP dashboard, notebook, pen and coffee on clean white desk, professional corporate photography, no readable text, no people'
+  } else if (isDX) {
     theme =
-      'overhead view of financial charts, graphs and business reports spread on conference table with hands pointing, no faces visible'
-  } else if (isPMI) {
+      'overhead flat-lay of tablet with abstract workflow diagram, business documents and pen on clean white desk, digital transformation concept, no readable text, no people'
+  } else if (isAgile) {
     theme =
-      'wide shot of modern Japanese conference room, business team seen from behind gathered around table with documents, integration meeting'
-  } else if (isSuccession) {
+      'wide shot of modern Japanese conference room, business team seen from behind gathered around whiteboard with sticky notes, agile sprint planning, no faces visible'
+  } else if (isAPI) {
     theme =
-      'mid shot of two pairs of hands exchanging business documents across a desk, warm office lighting, succession symbolism, no faces'
-  } else if (isMA) {
-    const maThemes = [
-      'professional handshake between two business people in dark navy and grey suits, clean white or light grey minimalist background, symbolic of M&A deal and partnership, corporate stock photography style, upper body and hands visible, photorealistic',
-      'overhead flat-lay of M&A themed objects on white desk: wooden or cardboard blocks spelling M and A, business documents, laptop, calculator, pen, professional corporate stock photography, clean minimal style, no people',
-      'wooden blocks stacked vertically with M and A letters on each, placed on business documents with graphs and charts, clean light grey or white background, shallow depth of field, professional corporate stock photography',
-      'businessman hand in dark suit sleeve over business documents and charts, symbolic of M&A or deal-making, professional conceptual corporate photography, clean neutral background, no face visible, photorealistic',
-      'close-up of business meeting table with multiple hands holding tablet and documents, pen and calculator, collaborative discussion, no faces visible, clean white table, natural light, professional corporate stock photography',
+      'overhead flat-lay of laptop with abstract system integration diagram on screen, notebook with flowchart sketches, pen on clean white desk, no readable text, no people'
+  } else if (isRecovery) {
+    const recoveryThemes = [
+      'wide shot of modern conference room, business team seen from behind reviewing project documents on large screen, professional corporate photography, no faces visible',
+      'overhead flat-lay of project planning documents, laptop with abstract dashboard, pen and notebook on clean white desk, professional corporate stock photography, no people',
     ]
-    theme = maThemes[Math.floor(Math.random() * maThemes.length)]!
+    theme = recoveryThemes[Math.floor(Math.random() * recoveryThemes.length)]!
   } else {
     theme =
       'overhead flat-lay of Japanese business documents, notebook, pen and laptop on clean office desk, professional corporate style'

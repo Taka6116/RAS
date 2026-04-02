@@ -5,9 +5,16 @@ import { decodeHtmlEntities } from './wpTagList'
 export const WORDPRESS_TAG_HIDDEN_KEY = 'nas-wordpress-tag-hidden'
 export const MAX_WORDPRESS_TAG_HIDDEN = 200
 
+const HIDDEN_MIGRATED_KEY = 'nas-wordpress-tag-hidden-v2-migrated'
+
 export function loadWordPressTagHidden(): string[] {
   if (typeof window === 'undefined') return []
   try {
+    if (!localStorage.getItem(HIDDEN_MIGRATED_KEY)) {
+      localStorage.removeItem(WORDPRESS_TAG_HIDDEN_KEY)
+      localStorage.setItem(HIDDEN_MIGRATED_KEY, '1')
+      return []
+    }
     const raw = localStorage.getItem(WORDPRESS_TAG_HIDDEN_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown

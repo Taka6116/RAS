@@ -5,9 +5,16 @@ import { decodeHtmlEntities } from './wpTagList'
 export const WORDPRESS_TAG_HISTORY_KEY = 'nas-wordpress-tag-history'
 export const MAX_WORDPRESS_TAG_HISTORY = 80
 
+const HISTORY_MIGRATED_KEY = 'nas-wordpress-tag-history-v2-migrated'
+
 export function loadWordPressTagHistory(): string[] {
   if (typeof window === 'undefined') return []
   try {
+    if (!localStorage.getItem(HISTORY_MIGRATED_KEY)) {
+      localStorage.removeItem(WORDPRESS_TAG_HISTORY_KEY)
+      localStorage.setItem(HISTORY_MIGRATED_KEY, '1')
+      return []
+    }
     const raw = localStorage.getItem(WORDPRESS_TAG_HISTORY_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown

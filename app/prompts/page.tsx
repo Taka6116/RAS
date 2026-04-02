@@ -109,7 +109,7 @@ export default function PromptsPage() {
                 type="text"
                 value={editTitle}
                 onChange={e => setEditTitle(e.target.value)}
-                placeholder="例：導入事例インタビュー用"
+                placeholder="例：ERP導入事例コラム用"
                 className="w-full px-4 py-2.5 rounded-lg border border-[#D0E3F0] focus:ring-2 focus:ring-[#0A2540]/30 focus:border-[#0A2540] outline-none transition-all text-sm"
               />
             </div>

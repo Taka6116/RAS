@@ -787,7 +787,7 @@ export default function SchedulePage() {
                                 fontFamily: 'DM Mono',
                                 background: '#FAFBFC',
                               }}
-                              placeholder="例: erp-saas-invoicing-tax-guide（半角英数字とハイフン）"
+                              placeholder="例: ricecloud-netsuite-introduction-guide（半角英数字とハイフン）"
                             />
                           )}
                         </div>

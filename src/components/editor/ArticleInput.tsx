@@ -217,7 +217,7 @@ export default function ArticleInput({
                 <textarea
                   value={prompt}
                   onChange={e => setPrompt(e.target.value)}
-                  placeholder="例：事業承継の基礎について、相談先の種類・手順・注意点を分かりやすく2000字程度で記事を書いてください"
+                  placeholder="例：クラウドERP導入の進め方について、製品選定・導入ステップ・注意点を分かりやすく2000字程度で記事を書いてください"
                   className="
                     w-full px-4 py-3 rounded-lg border border-[#D0E3F0]
                     text-[#1A1A2E] placeholder-[#CBD5E1]
@@ -279,7 +279,7 @@ export default function ArticleInput({
                   type="text"
                   value={article.targetKeyword ?? ''}
                   onChange={e => onTargetKeywordChange(e.target.value)}
-                  placeholder="例：事業承継 M&A, 中小企業 事業承継, 後継者不足, M&A 相談, デューデリジェンス, アドバイザー 選び方"
+                  placeholder="例：クラウドERP 導入, NetSuite 導入支援, Dynamics 365 比較, ERP 業務効率化, SaaS 導入 中小企業, アジャイル ERP"
                   className="w-full px-4 py-3 rounded-lg text-sm border border-[#D0E3F0] text-[#1A1A2E] bg-[#FAFBFC] focus:outline-none focus:ring-2 focus:ring-[#0A2540]/30"
                 />
               </div>

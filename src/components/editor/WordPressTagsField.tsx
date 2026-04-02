@@ -475,7 +475,7 @@ export default function WordPressTagsField({ value, onChange }: WordPressTagsFie
                 addFreeText()
               }
             }}
-            placeholder="例: DD（デューデリジェンス）、売却"
+            placeholder="例: NetSuite、Dynamics 365、ERP導入"
             autoComplete="off"
             className="flex-1 px-4 py-2.5 rounded-lg border border-[#D0E3F0] text-sm text-[#1A1A2E] focus:outline-none focus:ring-2 focus:ring-[#0A2540]/30 focus:border-[#0A2540]"
           />

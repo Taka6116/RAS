@@ -183,39 +183,38 @@ export async function POST(request: NextRequest) {
 function buildPrompt(title: string, targetKeyword?: string): string {
   const text = title + (targetKeyword ?? '')
 
-  const isContract = /契約|NDA|秘密保持|意向表明/.test(text)
-  const isFinance = /補助金|税制|融資|資金|節税|バリュエーション|企業価値/.test(text)
-  const isPMI = /PMI|統合|経営統合/.test(text)
-  const isSuccession = /後継者|引継|承継/.test(text)
-  const isMA = /M&A|買収|合併|仲介|売却/.test(text)
+  const isERP = /ERP|NetSuite|Dynamics|クラウドERP|基幹システム/.test(text)
+  const isDX = /DX|デジタル|業務改善|業務効率|自動化|ワークフロー/.test(text)
+  const isAgile = /アジャイル|短納期|スプリント|導入支援/.test(text)
+  const isAPI = /API|連携|SaaS|システム連携|データ連携/.test(text)
+  const isRecovery = /リカバリー|立て直し|失敗|頓挫|再構築/.test(text)
 
   let theme = ''
 
-  if (isContract) {
+  if (isERP) {
     const pool = [
       ...ARCH_FLATLAY,
-      'overhead flat-lay of stacked business contract documents and fountain pen on white desk, abstract seals only no readable clauses, no people',
+      'overhead flat-lay of laptop showing abstract ERP dashboard, notebook, pen and coffee on clean white desk, professional corporate photography, no readable text, no people',
     ]
     theme = pickRandom(pool)
-  } else if (isFinance) {
+  } else if (isDX) {
     const pool = [
       ...ARCH_FLATLAY,
-      'overhead flat-lay of financial charts and business reports on clean white conference table, calculator and pen, abstract graphs only no legible figures, no people',
+      'overhead flat-lay of tablet with abstract workflow diagram, business documents and pen on clean white desk, digital transformation concept, no readable text, no people',
     ]
     theme = pickRandom(pool)
-  } else if (isPMI) {
+  } else if (isAgile) {
     theme = pickRandom([...ARCH_MEETING_WIDE, ...ARCH_PEOPLE_DESK, ...ARCH_FLATLAY])
-  } else if (isSuccession) {
+  } else if (isAPI) {
     const pool = [
-      'overhead flat-lay of business succession documents, company seal, pen and leather notebook on clean wooden desk, warm office lighting, no readable text, no people',
+      'overhead flat-lay of laptop with abstract system integration diagram on screen, notebook with flowchart sketches, pen on clean white desk, no readable text, no people',
       ...ARCH_FLATLAY,
     ]
     theme = pickRandom(pool)
-  } else if (isMA) {
+  } else if (isRecovery) {
     const pool = [
       ...ARCH_FLATLAY,
       ...ARCH_PEOPLE_DESK,
-      ...ARCH_SKYLINE,
       ...ARCH_MEETING_WIDE,
     ]
     theme = pickRandom(pool)
