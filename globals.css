@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary: #009AE0;
+  --color-primary-hover: #0080C0;
+  --color-primary-light: #E6F5FC;
+  --color-primary-border: #0088CC;
+  --color-navy: #0A2540;
+  --color-navy-light: #163A5F;
+  --color-accent: #00B4D8;
+  --color-red: #E63946;
+  --color-page-bg: #F0F7FC;
+  --color-card-bg: #FFFFFF;
+  --color-text-main: #1A1A2E;
+  --color-text-muted: #64748B;
+  --color-border: #D0E3F0;
+  --color-success: #16A34A;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--color-page-bg);
+  color: var(--color-text-main);
+  font-family: 'Noto Sans JP', sans-serif;
+  font-weight: 400;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Noto Sans JP', sans-serif;
+  font-weight: 700;
+}
+
+.font-mono {
+  font-family: 'DM Mono', monospace;
+}
