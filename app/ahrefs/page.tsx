@@ -173,10 +173,7 @@ export default function AhrefsPage() {
   const visible = filtered.slice(0, showCount)
   const isOrganicTab = activeTab === 'organic'
 
-  const kwTotal = kwScored.length
-  const organicTotal = organicScored.length
-  const p3CountAll = allScored.filter(k => k.priority === 3).length
-  const p2CountAll = allScored.filter(k => k.priority === 2).length
+  const activeTotal = activeData.length
   const p3Count = activeData.filter(k => k.priority === 3).length
   const p2Count = activeData.filter(k => k.priority === 2).length
   const trendCount = allTrends.length
@@ -271,11 +268,10 @@ export default function AhrefsPage() {
       {hasData && (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-            <SummaryCard label="KW総数" value={fmtNum(kwTotal)} />
-            <SummaryCard label="★★★ 即攻め" value={fmtNum(p3CountAll)} accent="amber" />
-            <SummaryCard label="★★ 有望" value={fmtNum(p2CountAll)} accent="blue" />
-            <SummaryCard label="競合KW" value={fmtNum(organicTotal)} accent="purple" />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            <SummaryCard label="KW総数" value={fmtNum(activeTotal)} />
+            <SummaryCard label="★★★ 即攻め" value={fmtNum(p3Count)} accent="amber" />
+            <SummaryCard label="★★ 有望" value={fmtNum(p2Count)} accent="blue" />
             <SummaryCard label="トレンドKW" value={fmtNum(trendCount)} accent="green" />
           </div>
 
