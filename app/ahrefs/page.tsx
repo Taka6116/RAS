@@ -462,7 +462,7 @@ export default function AhrefsPage() {
                             <button
                               type="button"
                               onClick={() => handleWriteArticle(kw)}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white transition-colors"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white transition-colors whitespace-nowrap"
                               style={{ backgroundColor: kw.priority === 3 ? '#E67E22' : '#009AE0' }}
                               onMouseEnter={e => (e.currentTarget.style.backgroundColor = kw.priority === 3 ? '#CF6D17' : '#0080C0')}
                               onMouseLeave={e => (e.currentTarget.style.backgroundColor = kw.priority === 3 ? '#E67E22' : '#009AE0')}
