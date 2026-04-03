@@ -293,35 +293,42 @@ export default function AhrefsPage() {
   const hasData = datasets.length > 0
 
   return (
-    <div className="w-full py-8">
-      <h1 className="text-2xl font-bold text-[#1A1A2E] mb-1">KW分析ダッシュボード</h1>
-      <p className="text-sm text-[#64748B] mb-6">
-        AhrefsのCSVデータから狙い目キーワードを分析し、記事制作につなげます。
-      </p>
+    <div
+      className="w-full py-8"
+      onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={e => { e.preventDefault(); setDragOver(false); handleUpload(e.dataTransfer.files) }}
+    >
+      {dragOver && (
+        <div className="fixed inset-0 bg-[#009AE0]/10 border-2 border-dashed border-[#009AE0] rounded-xl z-50 pointer-events-none flex items-center justify-center">
+          <p className="text-[#009AE0] font-semibold text-lg">CSVをドロップしてインポート</p>
+        </div>
+      )}
 
-      {/* Upload area */}
-      <div
-        className={`relative rounded-xl border-2 border-dashed p-6 text-center transition-colors mb-6 ${
-          dragOver ? 'border-[#009AE0] bg-[#F0F4FF]' : 'border-[#D0E3F0] bg-white'
-        }`}
-        onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={e => { e.preventDefault(); setDragOver(false); handleUpload(e.dataTransfer.files) }}
-      >
-        <input
-          type="file"
-          accept=".csv,.tsv"
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-          onChange={e => { handleUpload(e.target.files); e.target.value = '' }}
-          disabled={uploading}
-        />
-        <Upload className="mx-auto text-[#94A3B8]" size={36} />
-        <p className="mt-2 text-sm font-medium text-[#1A1A2E]">
-          {uploading ? 'アップロード中...' : 'AhrefsのCSVをドラッグ＆ドロップ、またはクリック'}
-        </p>
-        <p className="mt-1 text-xs text-[#64748B]">
-          Keywords Explorer / Site Explorer (Organic Keywords) のCSV対応
-        </p>
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-[#1A1A2E] mb-1">KW分析ダッシュボード</h1>
+          <p className="text-sm text-[#64748B]">
+            AhrefsのCSVデータから狙い目キーワードを分析し、記事制作につなげます。
+          </p>
+        </div>
+        <div className="relative flex-shrink-0">
+          <input
+            type="file"
+            accept=".csv,.tsv"
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            onChange={e => { handleUpload(e.target.files); e.target.value = '' }}
+            disabled={uploading}
+          />
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-[#D0E3F0] bg-white hover:border-[#009AE0] hover:bg-[#F0F4FF] transition-colors text-sm font-medium text-[#475569] whitespace-nowrap"
+          >
+            <Upload size={16} className="text-[#94A3B8]" />
+            {uploading ? 'アップロード中...' : 'CSVインポート'}
+          </button>
+        </div>
       </div>
 
       {error && (
