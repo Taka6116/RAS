@@ -35,22 +35,129 @@ function kdBg(kd: number): string {
 }
 
 function generateAutoPrompt(row: ScoredKeyword): string {
-  const vs = row.volume > 1000 ? '包括的で網羅的な' : 'ニッチで専門的な'
-  const ks = row.kd < 30
-    ? '上位表示のチャンスが高い。基本を押さえつつRICE CLOUDの独自視点（アジャイル導入・リカバリー実績）で差別化'
-    : '競合が強い。RICE CLOUDの実体験・具体的数値で競合記事との差別化が必須'
-  return `以下のターゲットキーワードに対して、検索ユーザーの意図に応える記事を執筆してください。
+  const priorityLabels: Record<number, string> = {
+    3: '★★★（最優先 — 低難易度・十分なボリューム。上位表示の勝算あり）',
+    2: '★★（有望 — 記事計画に入れるべきKW）',
+    1: '★（検討中 — 余力があれば着手）',
+    0: '（参考レベル）',
+  }
 
-ターゲットキーワード: ${row.keyword}
-月間検索ボリューム: ${row.volume}
-競合難易度(KD): ${row.kd}
+  let volumeStrategy = ''
+  if (row.volume > 5000) volumeStrategy = '・検索ボリュームが非常に大きいため、包括的かつ網羅的な内容にすること。記事の情報量で勝負'
+  else if (row.volume > 1000) volumeStrategy = '・十分な検索ボリュームがあるため、幅広い検索意図をカバーする構成にすること'
+  else if (row.volume > 300) volumeStrategy = '・中規模ボリューム。ニッチな専門性と具体性で上位を狙える領域'
+  else volumeStrategy = '・ニッチキーワード。深い専門知識と具体的な事例で差別化すること'
 
-【執筆方針】
-・検索ボリューム${row.volume}のキーワードなので、${vs}内容にすること
-・競合難易度KD=${row.kd}なので、${ks}
-・RICE CLOUDのSaaS(ERP)導入支援（Oracle NetSuite / Microsoft Dynamics 365 / Power Platform）の知見を活かした実践的な内容にすること
-・アジャイル手法による低コスト・短納期の導入メリットを具体的に盛り込むこと
-・プロジェクトリカバリー（他社失敗案件の立て直し）の実績・知見があれば触れること`
+  let kdStrategy = ''
+  if (row.kd <= 10) kdStrategy = '・競合がほぼ不在。基本を丁寧に押さえつつRICE CLOUDの独自事例を入れれば上位表示可能'
+  else if (row.kd <= 30) kdStrategy = '・競合難易度が低い。基本を押さえつつRICE CLOUDの独自視点（アジャイル導入・リカバリー実績）で差別化すれば上位表示の勝算あり'
+  else if (row.kd <= 50) kdStrategy = '・中程度の競合。RICE CLOUDの実体験・具体的数値で既存記事との差別化が必要'
+  else kdStrategy = '・競合が強い領域。RICE CLOUDにしか書けない現場知見・独自データで差別化が必須。一般論は避けること'
+
+  let cpcStrategy = ''
+  if (row.cpc > 3) cpcStrategy = '\n・CPCが高く商業的意図が強い。CTAへの導線を丁寧に設計し、コンバージョンを意識した構成にすること'
+  else if (row.cpc > 0) cpcStrategy = '\n・一定の商業的価値あり。記事末尾のCTAを自然かつ説得力のある形にすること'
+
+  let trendNote = ''
+  if (row.trend === 'up') trendNote = '\n・トレンド: 検索需要が上昇中。タイムリーな記事が効果的'
+  else if (row.trend === 'down') trendNote = '\n・トレンド: 検索需要は下降傾向。エバーグリーンな切り口を推奨'
+
+  const categoryIntents: Record<string, string> = {
+    'NetSuite': '\n・Oracle NetSuiteの特徴・強み・他製品との違いを知りたい',
+    'Dynamics 365': '\n・Microsoft Dynamics 365の適用範囲・ライセンス体系を理解したい',
+    'Power Platform': '\n・Power Platform（Power Apps/Automate/BI）で何ができるかを知りたい',
+    'コスト・費用': '\n・ERP導入にかかる費用の相場感・ROIの考え方を知りたい',
+    '比較・選定': '\n・複数のERP製品を比較し、自社に最適なものを選定したい',
+    '導入・移行': '\n・既存システムからの移行手順・リスク・期間を理解したい',
+    '会計・財務': '\n・ERP導入による会計・財務業務の効率化・自動化の具体像を知りたい',
+    '販売・在庫': '\n・販売管理・在庫管理のシステム化で解決できる課題を知りたい',
+  }
+  const extraIntent = categoryIntents[row.detectedCategory] ?? ''
+
+  return `あなたはBtoB領域に特化したSEO・LLMOに強いコンテンツ戦略コンサルタント兼編集者であり、10年以上の実務経験を持ちます。現在は株式会社RICE CLOUD（ライスクラウド）のマーケティング兼ライターとして、ERP/SaaS導入領域における検索上位記事の制作を担っています。
+
+単なる情報整理ではなく、検索意図の解像度を高め、意思決定を前進させる記事設計を行ってください。
+
+■目的
+
+・ERP/SaaS導入の非指名検索ユーザーの流入獲得
+・専門性・信頼性・独自性の担保（E-E-A-T強化）
+・ユーザーの検索意図（ペイン）の「ERP導入の複雑さに圧倒され、失敗を恐れている。何から始めればよいか分からない。」に応える内容にする
+
+■テーマ
+
+「${row.keyword}」
+
+■KWデータに基づく執筆方針
+
+・ターゲットキーワード: ${row.keyword}
+・月間検索ボリューム: ${fmtNum(row.volume)}
+・競合難易度(KD): ${row.kd}
+・推定CPC: ¥${fmtNum(Math.round(row.cpc * 150))}
+・カテゴリ: ${row.detectedCategory}
+・優先度: ${priorityLabels[row.priority] ?? ''}${trendNote}
+${volumeStrategy}
+${kdStrategy}${cpcStrategy}
+
+■検索意図の整理（必ず踏まえる）
+
+以下の複数の検索意図を統合して記事を設計すること：
+
+・ERP/SaaS導入とは何かを知りたい（基礎理解）
+・自社に合った導入方法の判断基準がほしい（意思決定）
+・ERP導入で失敗したくない、プロジェクト炎上は回避したい（リスク回避）${extraIntent}
+
+■ターゲット
+
+・ERP導入を検討し始めた中堅〜大企業の経営企画・IT部門・DX推進担当者
+・業務改善・基幹システム刷新を視野に入れているが、進め方に不安がある層
+・「何から手をつけるべきか分からない」状態の意思決定初期層
+
+■必須条件
+
+・AWS S3 data-for-ras/materials_for_rice_cloud/ に格納されているデータを参照し、RICE CLOUDの独自性のある内容に反映すること
+・S3内の資料から「1〜3文」をそのまま活用し、本文内に自然に組み込むこと（RICE CLOUDの現場知見として）
+・机上の空論ではなく、「現場で実際に起きている意思決定」をベースに記述すること
+・RICE CLOUDの強みである「アジャイル手法による導入」「プロジェクトリカバリー（他社失敗案件の立て直し）」の内容をどこかに自然な形で入れること
+
+■構成要件（SEO・LLMO最適化）
+
+以下の構造で出力してください：
+
+①タイトル（32文字以内・クリックされる設計）
+②導入文（検索意図への共感＋記事の価値提示）
+③結論要約（LLMO向けに先出しで要点整理）
+④本文（見出し構造）
+　- H2：本文の内容に合わせてください（「1. 」番号付き形式）
+　- H2：本文の内容に合わせてください
+　- H2：本文の内容に合わせてください
+　- H3：各ポイントを具体的に解説（「1-1. 」形式）
+⑤RICE CLOUDならではの視点（独自性）
+⑥まとめ
+⑦CTA（導入事例・相談への自然な導線）
+⑧よくある質問（FAQ）— Q. と A. の形式で5つ程度
+
+■品質要件
+
+・専門性がありながらも読みやすい（IT部門以外の経営層でも理解できるレベル）
+・抽象論ではなく、具体例・示唆を含める
+・冗長表現は避け、簡潔かつ論理的に
+・AIっぽさを排除（テンプレ感・不自然な言い回しNG）
+・「近年〜」「DXが叫ばれる中〜」「ERPとは〜」から始まる定型導入は禁止
+
+■SEO・LLMO要件
+
+・ターゲットKW「${row.keyword}」を軸に、共起語・関連キーワードを自然に含める
+・検索意図（情報収集・比較検討）を満たす
+・箇条書き・構造化でAIが理解しやすい形式
+・結論ファーストで要点を明確化
+
+■出力形式
+
+記事本文の最後に以下も必ず出力してください：
+
+・SEOキーワードリスト（主要KW・関連KW・ロングテール）
+・LLMO対策で意識したポイント（簡潔に3つ）`
 }
 
 export default function AhrefsPage() {
