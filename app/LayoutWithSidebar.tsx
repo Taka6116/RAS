@@ -70,7 +70,9 @@ export default function LayoutWithSidebar({
         </nav>
 
         <div className="px-4 py-4 border-t flex flex-col items-center gap-2" style={{ borderColor: '#0088CC' }}>
-          <img src="/rice-cloud-logo.png" alt="RICE CLOUD JAPAN" className="w-[140px] h-auto" />
+          <div className="bg-white rounded-lg px-3 py-2">
+            <img src="/rice-cloud-logo.png" alt="RICE CLOUD JAPAN" className="w-[140px] h-auto" />
+          </div>
           <p className="text-[10px] text-white/50">© Rice Cloud</p>
         </div>
       </aside>
