@@ -57,11 +57,7 @@ function insertCtaBannersForPreview(html: string): string {
   return html + '\n' + cta
 }
 
-function formatContent(content: string, imageUrl: string): string {
-  const imageHtml = imageUrl
-    ? `<img src="${imageUrl}" style="width:100%;height:auto;margin-bottom:32px;display:block;" alt="" />`
-    : ''
-
+function formatContent(content: string): string {
   const supervisorBlock = getSupervisorBlockHtml(SUPERVISOR_FACE_IMAGE_URL)
 
   const H2_STYLE = "font-size:20px;font-weight:700;margin:48px 0 16px;padding:14px 20px;background:#1a2744;color:#fff;border-radius:4px;font-family:'Noto Sans JP',sans-serif;"
@@ -132,13 +128,7 @@ function formatContent(content: string, imageUrl: string): string {
 
   bodyHtml = insertCtaBannersForPreview(bodyHtml)
 
-  if (imageHtml) {
-    const firstH2 = bodyHtml.indexOf('<h2 ')
-    if (firstH2 > 0) {
-      return bodyHtml.slice(0, firstH2) + imageHtml + supervisorBlock + bodyHtml.slice(firstH2)
-    }
-  }
-  return imageHtml + supervisorBlock + bodyHtml
+  return supervisorBlock + bodyHtml
 }
 
 function PreviewContent() {
@@ -194,8 +184,8 @@ function PreviewContent() {
   const articleId = searchParams.get('articleId') || ''
 
   const formattedContent = useMemo(
-    () => formatContent(content, imageUrl),
-    [content, imageUrl]
+    () => formatContent(content),
+    [content]
   )
 
   const handlePublish = useCallback(() => {
@@ -520,6 +510,23 @@ function PreviewContent() {
                 </time>
               </div>
             </header>
+
+            {/* アイキャッチ画像（タイトル直下、本文の前） */}
+            {imageUrl && (
+              <div style={{ marginBottom: 32 }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={imageUrl}
+                  alt=""
+                  style={{
+                    width: '100%',
+                    height: 'auto',
+                    display: 'block',
+                    borderRadius: 4,
+                  }}
+                />
+              </div>
+            )}
 
             {/* 記事本文 */}
             <div
