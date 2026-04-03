@@ -57,13 +57,6 @@ export async function POST(request: NextRequest) {
   if (!matched) {
     return NextResponse.json({
       error: 'メールアドレスまたはパスワードが正しくありません',
-      debug: {
-        登録アカウント数: accounts.length,
-        入力メール長: inputEmail.length,
-        入力PW長: inputPassword.length,
-        AUTH_SECRET設定済: !!(process.env.AUTH_SECRET && process.env.AUTH_SECRET.length >= 16),
-        AUTH_SECRET長: process.env.AUTH_SECRET?.length ?? 0,
-      },
     }, { status: 401 })
   }
 
@@ -71,20 +64,11 @@ export async function POST(request: NextRequest) {
   if (!secret || secret.length < 16) {
     return NextResponse.json({
       error: 'AUTH_SECRET が未設定または短すぎます',
-      debug: { AUTH_SECRET長: secret?.length ?? 0 },
     }, { status: 500 })
   }
 
   const cookieValue = createAuthCookie()
-  const res = NextResponse.json({
-    ok: true,
-    debug: {
-      cookieName: getAuthCookieName(),
-      cookieLength: cookieValue.length,
-      secure: process.env.NODE_ENV === 'production',
-      NODE_ENV: process.env.NODE_ENV,
-    },
-  })
+  const res = NextResponse.json({ ok: true })
   res.cookies.set(getAuthCookieName(), cookieValue, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',

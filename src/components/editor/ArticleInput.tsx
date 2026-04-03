@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { ArticleData, Step } from '@/lib/types'
 import { SavedPrompt, getAllPrompts } from '@/lib/promptStorage'
 import { SavedKeyword, getAllKeywords } from '@/lib/keywordStorage'
@@ -29,6 +30,7 @@ export default function ArticleInput({
   onClear,
   onStepClick,
 }: ArticleInputProps) {
+  const searchParams = useSearchParams()
   const [prompt, setPrompt] = useState('')
   const [generating, setGenerating] = useState(false)
   const [generatingStep, setGeneratingStep] = useState<string>('loading')
@@ -39,6 +41,18 @@ export default function ArticleInput({
   const [showKeywordDropdown, setShowKeywordDropdown] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const keywordDropdownRef = useRef<HTMLDivElement>(null)
+  const kwParamsApplied = useRef(false)
+
+  useEffect(() => {
+    if (kwParamsApplied.current) return
+    const kwPrompt = searchParams.get('kwPrompt')
+    const kwTarget = searchParams.get('kwTarget')
+    if (kwPrompt || kwTarget) {
+      kwParamsApplied.current = true
+      if (kwPrompt && !prompt) setPrompt(kwPrompt)
+      if (kwTarget && !(article.targetKeyword ?? '').trim()) onTargetKeywordChange(kwTarget)
+    }
+  }, [searchParams]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const reloadLibraries = useCallback(async () => {
     const [p, k] = await Promise.all([getAllPrompts(), getAllKeywords()])
