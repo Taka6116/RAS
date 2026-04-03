@@ -59,10 +59,10 @@ function calcOpportunityScore(row: AhrefsKeywordRow): number {
 function calcPriority(
   score: number, kd: number, volume: number, trend: 'up' | 'down' | 'stable',
 ): PriorityLevel {
-  if (score >= 60 && kd <= 30 && volume >= 500) return 3
+  if (score >= 50 && kd <= 30 && volume >= 100) return 3
   if (score >= 40 && kd <= 30 && trend === 'up') return 3
   if (score >= 40 && kd <= 50) return 2
-  if (kd <= 20 && volume >= 300) return 2
+  if (kd <= 20 && volume >= 100) return 2
   if (score >= 20) return 1
   return 0
 }

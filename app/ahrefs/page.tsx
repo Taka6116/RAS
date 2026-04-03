@@ -175,11 +175,14 @@ export default function AhrefsPage() {
 
   const kwTotal = kwScored.length
   const organicTotal = organicScored.length
-  const p3Count = allScored.filter(k => k.priority === 3).length
-  const p2Count = allScored.filter(k => k.priority === 2).length
+  const p3CountAll = allScored.filter(k => k.priority === 3).length
+  const p2CountAll = allScored.filter(k => k.priority === 2).length
+  const p3Count = activeData.filter(k => k.priority === 3).length
+  const p2Count = activeData.filter(k => k.priority === 2).length
   const trendCount = allTrends.length
 
-  useEffect(() => { setShowCount(PAGE_SIZE) }, [activeTab, selectedPriority, selectedCategory, searchQuery])
+  useEffect(() => { setShowCount(PAGE_SIZE); setSelectedPriority('all') }, [activeTab])
+  useEffect(() => { setShowCount(PAGE_SIZE) }, [selectedPriority, selectedCategory, searchQuery])
 
   const hasData = datasets.length > 0
 
@@ -270,37 +273,39 @@ export default function AhrefsPage() {
           {/* Summary cards */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
             <SummaryCard label="KW総数" value={fmtNum(kwTotal)} />
-            <SummaryCard label="★★★ 即攻め" value={fmtNum(p3Count)} accent="amber" />
-            <SummaryCard label="★★ 有望" value={fmtNum(p2Count)} accent="blue" />
+            <SummaryCard label="★★★ 即攻め" value={fmtNum(p3CountAll)} accent="amber" />
+            <SummaryCard label="★★ 有望" value={fmtNum(p2CountAll)} accent="blue" />
             <SummaryCard label="競合KW" value={fmtNum(organicTotal)} accent="purple" />
             <SummaryCard label="トレンドKW" value={fmtNum(trendCount)} accent="green" />
           </div>
 
-          {/* Priority pills */}
-          <div className="flex flex-wrap gap-2 mb-3">
-            {([
-              { key: 'all' as const, label: 'すべて', count: allScored.length },
-              { key: 3 as PriorityLevel, label: '★★★ 即攻め', count: p3Count },
-              { key: 2 as PriorityLevel, label: '★★ 有望', count: p2Count },
-              { key: 1 as PriorityLevel, label: '★ 余力', count: allScored.filter(k => k.priority === 1).length },
-              { key: 0 as PriorityLevel, label: '対象外', count: allScored.filter(k => k.priority === 0).length },
-            ]).map(p => (
-              <button
-                key={String(p.key)}
-                type="button"
-                onClick={() => setSelectedPriority(selectedPriority === p.key ? 'all' : p.key)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                  selectedPriority === p.key
-                    ? p.key === 3 ? 'bg-amber-500 text-white border-amber-500'
-                      : p.key === 2 ? 'bg-blue-500 text-white border-blue-500'
-                      : 'bg-[#009AE0] text-white border-[#009AE0]'
-                    : 'bg-white text-[#475569] border-[#D0E3F0] hover:border-[#009AE0]'
-                }`}
-              >
-                {p.label} ({fmtNum(p.count)})
-              </button>
-            ))}
-          </div>
+          {/* Priority pills (hidden on trends tab) */}
+          {activeTab !== 'trends' && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {([
+                { key: 'all' as const, label: 'すべて', count: activeData.length },
+                { key: 3 as PriorityLevel, label: '★★★ 即攻め', count: p3Count },
+                { key: 2 as PriorityLevel, label: '★★ 有望', count: p2Count },
+                { key: 1 as PriorityLevel, label: '★ 余力', count: activeData.filter(k => k.priority === 1).length },
+                { key: 0 as PriorityLevel, label: '対象外', count: activeData.filter(k => k.priority === 0).length },
+              ]).map(p => (
+                <button
+                  key={String(p.key)}
+                  type="button"
+                  onClick={() => setSelectedPriority(selectedPriority === p.key ? 'all' : p.key)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                    selectedPriority === p.key
+                      ? p.key === 3 ? 'bg-amber-500 text-white border-amber-500'
+                        : p.key === 2 ? 'bg-blue-500 text-white border-blue-500'
+                        : 'bg-[#009AE0] text-white border-[#009AE0]'
+                      : 'bg-white text-[#475569] border-[#D0E3F0] hover:border-[#009AE0]'
+                  }`}
+                >
+                  {p.label} ({fmtNum(p.count)})
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Category pills */}
           <div className="flex flex-wrap gap-2 mb-5">
