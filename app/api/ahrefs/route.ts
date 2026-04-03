@@ -4,6 +4,17 @@ import { putS3Object, getS3ObjectAsText, deleteS3Object, listS3Objects } from '@
 
 export const dynamic = 'force-dynamic'
 
+function decodeCSVBuffer(bytes: Uint8Array): string {
+  if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+    return new TextDecoder('utf-16le').decode(bytes)
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
+    return new TextDecoder('utf-16be').decode(bytes)
+  }
+  const text = new TextDecoder('utf-8').decode(bytes)
+  return text.replace(/^\uFEFF/, '')
+}
+
 const PREFIX = 'kw-analysis/'
 const LATEST_KEY = `${PREFIX}latest.json`
 const META_KEY = `${PREFIX}meta.json`
@@ -16,7 +27,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'CSVファイルを選択してください' }, { status: 400 })
     }
 
-    const text = (await file.text()).replace(/^\uFEFF/, '')
+    const buf = await file.arrayBuffer()
+    const text = decodeCSVBuffer(new Uint8Array(buf))
     if (!text.trim()) {
       return NextResponse.json({ error: 'ファイルの中身が空です' }, { status: 400 })
     }
