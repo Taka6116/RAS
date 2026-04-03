@@ -123,3 +123,26 @@ export function getCategories(scored: ScoredKeyword[]): string[] {
   for (const kw of scored) set.add(kw.detectedCategory)
   return Array.from(set).sort()
 }
+
+export interface CategoryCount {
+  category: string
+  count: number
+}
+
+export function getCategoryCounts(scored: ScoredKeyword[]): CategoryCount[] {
+  const map = new Map<string, number>()
+  for (const kw of scored) {
+    map.set(kw.detectedCategory, (map.get(kw.detectedCategory) ?? 0) + 1)
+  }
+  return Array.from(map.entries())
+    .map(([category, count]) => ({ category, count }))
+    .sort((a, b) => b.count - a.count)
+}
+
+export function mergeAndAnalyze(
+  datasetsKeywords: AhrefsKeywordRow[][],
+): ScoredKeyword[] {
+  const all: AhrefsKeywordRow[] = []
+  for (const kws of datasetsKeywords) all.push(...kws)
+  return analyzeKeywords(all)
+}

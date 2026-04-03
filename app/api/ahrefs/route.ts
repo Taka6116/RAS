@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseAhrefsCsv } from '@/lib/ahrefsCsvParser'
+import type { AhrefsDataset } from '@/lib/ahrefsCsvParser'
 import { putS3Object, getS3ObjectAsText, deleteS3Object, listS3Objects } from '@/lib/s3Reference'
 
 export const dynamic = 'force-dynamic'
+
+const PREFIX = 'kw-analysis/'
+const INDEX_KEY = `${PREFIX}index.json`
+
+function datasetKey(id: string): string {
+  return `${PREFIX}datasets/${id}.json`
+}
 
 function decodeCSVBuffer(bytes: Uint8Array): string {
   if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
@@ -15,9 +23,23 @@ function decodeCSVBuffer(bytes: Uint8Array): string {
   return text.replace(/^\uFEFF/, '')
 }
 
-const PREFIX = 'kw-analysis/'
-const LATEST_KEY = `${PREFIX}latest.json`
-const META_KEY = `${PREFIX}meta.json`
+interface DatasetMeta {
+  id: string
+  fileName: string
+  type: 'keywords' | 'organic'
+  rowCount: number
+  uploadedAt: string
+}
+
+async function loadIndex(): Promise<DatasetMeta[]> {
+  const obj = await getS3ObjectAsText(INDEX_KEY)
+  if (!obj) return []
+  try { return JSON.parse(obj.content) } catch { return [] }
+}
+
+async function saveIndex(index: DatasetMeta[]): Promise<void> {
+  await putS3Object(INDEX_KEY, JSON.stringify(index))
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,22 +61,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'パース結果が0行です。CSVの形式を確認してください。' }, { status: 400 })
     }
 
-    const dataJson = JSON.stringify(dataset)
-    const saved = await putS3Object(LATEST_KEY, dataJson)
+    const saved = await putS3Object(datasetKey(dataset.id), JSON.stringify(dataset))
     if (!saved) {
       return NextResponse.json({ error: 'S3への保存に失敗しました。AWS設定を確認してください。' }, { status: 500 })
     }
 
-    const meta = {
-      uploadedAt: dataset.uploadedAt,
+    const index = await loadIndex()
+    index.push({
+      id: dataset.id,
       fileName: dataset.fileName,
-      rowCount: dataset.rowCount,
       type: dataset.type,
-    }
-    await putS3Object(META_KEY, JSON.stringify(meta))
+      rowCount: dataset.rowCount,
+      uploadedAt: dataset.uploadedAt,
+    })
+    await saveIndex(index)
 
     return NextResponse.json({
       success: true,
+      id: dataset.id,
       count: dataset.rowCount,
       type: dataset.type,
       uploadedAt: dataset.uploadedAt,
@@ -68,28 +92,39 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    const dataObj = await getS3ObjectAsText(LATEST_KEY)
-    if (!dataObj) {
-      return NextResponse.json({ data: null, meta: null })
+    const index = await loadIndex()
+    if (index.length === 0) {
+      return NextResponse.json({ datasets: [], index: [] })
     }
 
-    const dataset = JSON.parse(dataObj.content)
-
-    let meta = null
-    const metaObj = await getS3ObjectAsText(META_KEY)
-    if (metaObj) {
-      meta = JSON.parse(metaObj.content)
+    const datasets: AhrefsDataset[] = []
+    for (const meta of index) {
+      const obj = await getS3ObjectAsText(datasetKey(meta.id))
+      if (obj) {
+        try { datasets.push(JSON.parse(obj.content)) } catch { /* skip corrupt */ }
+      }
     }
 
-    return NextResponse.json({ data: dataset, meta })
+    return NextResponse.json({ datasets, index })
   } catch (e) {
     console.error('Ahrefs data fetch error:', e)
     return NextResponse.json({ error: 'データの取得に失敗しました' }, { status: 500 })
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+
+    if (id) {
+      await deleteS3Object(datasetKey(id))
+      const index = await loadIndex()
+      const updated = index.filter(m => m.id !== id)
+      await saveIndex(updated)
+      return NextResponse.json({ success: true })
+    }
+
     const objects = await listS3Objects(PREFIX)
     for (const obj of objects) {
       await deleteS3Object(obj.key)
