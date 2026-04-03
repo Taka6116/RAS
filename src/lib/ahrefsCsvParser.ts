@@ -59,6 +59,7 @@ const HEADER_ALIASES: Record<string, string[]> = {
 
 function normalizeHeader(raw: string): string {
   return raw
+    .replace(/[\uFEFF\uFFFE]/g, '')
     .replace(/^["'\s]+|["'\s]+$/g, '')
     .toLowerCase()
     .replace(/\s*\([^)]*\)\s*$/, '')

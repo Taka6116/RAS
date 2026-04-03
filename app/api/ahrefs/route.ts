@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'CSVファイルを選択してください' }, { status: 400 })
     }
 
-    const text = await file.text()
+    const text = (await file.text()).replace(/^\uFEFF/, '')
     if (!text.trim()) {
       return NextResponse.json({ error: 'ファイルの中身が空です' }, { status: 400 })
     }
