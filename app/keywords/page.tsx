@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Plus, Pencil, Trash2, X, Check } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Plus, Pencil, Trash2, X, Check, Loader2 } from 'lucide-react'
 import { SavedKeyword, getAllKeywords, saveKeyword, deleteKeyword } from '@/lib/keywordStorage'
 import Button from '@/components/ui/Button'
 
@@ -11,15 +11,20 @@ export default function KeywordsPage() {
   const [editTitle, setEditTitle] = useState('')
   const [editContent, setEditContent] = useState('')
   const [isCreating, setIsCreating] = useState(false)
-  const [mounted, setMounted] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<SavedKeyword | null>(null)
 
-  useEffect(() => {
-    setKeywords(getAllKeywords())
-    setMounted(true)
+  const loadKeywords = useCallback(async () => {
+    setLoading(true)
+    const data = await getAllKeywords()
+    setKeywords(data)
+    setLoading(false)
   }, [])
 
-  if (!mounted) return null
+  useEffect(() => {
+    loadKeywords()
+  }, [loadKeywords])
 
   const handleCreateNew = () => {
     setIsCreating(true)
@@ -40,31 +45,35 @@ export default function KeywordsPage() {
     setEditingId(null)
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!editTitle.trim() || !editContent.trim()) return
-    saveKeyword({
+    setSaving(true)
+    await saveKeyword({
       id: editingId || undefined,
       title: editTitle.trim(),
       content: editContent.trim(),
     })
-    setKeywords(getAllKeywords())
+    await loadKeywords()
     setIsCreating(false)
     setEditingId(null)
+    setSaving(false)
   }
 
   const handleRequestDelete = (k: SavedKeyword) => {
     setDeleteTarget(k)
   }
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!deleteTarget) return
-    deleteKeyword(deleteTarget.id)
-    setKeywords(getAllKeywords())
+    setSaving(true)
+    await deleteKeyword(deleteTarget.id)
+    await loadKeywords()
     if (editingId === deleteTarget.id) {
       setEditingId(null)
       setIsCreating(false)
     }
     setDeleteTarget(null)
+    setSaving(false)
   }
 
   const handleCloseDeleteModal = () => {
@@ -72,6 +81,17 @@ export default function KeywordsPage() {
   }
 
   const isEditorOpen = isCreating || editingId !== null
+
+  if (loading) {
+    return (
+      <div className="w-full py-8 max-w-4xl mx-auto">
+        <div className="flex items-center justify-center py-20 text-[#64748B]">
+          <Loader2 size={24} className="animate-spin mr-3" />
+          キーワードを読み込み中...
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="w-full py-8 max-w-4xl mx-auto">
@@ -128,9 +148,13 @@ export default function KeywordsPage() {
               <Button variant="ghost" onClick={handleCancel}>
                 キャンセル
               </Button>
-              <Button variant="primary" disabled={!editTitle.trim() || !editContent.trim()} onClick={handleSave}>
-                <Check size={18} className="mr-2" />
-                保存する
+              <Button variant="primary" disabled={!editTitle.trim() || !editContent.trim() || saving} onClick={handleSave}>
+                {saving ? (
+                  <Loader2 size={18} className="mr-2 animate-spin" />
+                ) : (
+                  <Check size={18} className="mr-2" />
+                )}
+                {saving ? '保存中...' : '保存する'}
               </Button>
             </div>
           </div>
@@ -195,8 +219,8 @@ export default function KeywordsPage() {
               <Button variant="ghost" onClick={handleCloseDeleteModal}>
                 キャンセル
               </Button>
-              <Button variant="primary" onClick={handleConfirmDelete}>
-                削除する
+              <Button variant="primary" disabled={saving} onClick={handleConfirmDelete}>
+                {saving ? '削除中...' : '削除する'}
               </Button>
             </div>
           </div>

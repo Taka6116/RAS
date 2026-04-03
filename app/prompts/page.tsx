@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Plus, Pencil, Trash2, X, Check } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Plus, Pencil, Trash2, X, Check, Loader2 } from 'lucide-react'
 import { SavedPrompt, getAllPrompts, savePrompt, deletePrompt } from '@/lib/promptStorage'
 import Button from '@/components/ui/Button'
 
@@ -11,15 +11,20 @@ export default function PromptsPage() {
   const [editTitle, setEditTitle] = useState('')
   const [editContent, setEditContent] = useState('')
   const [isCreating, setIsCreating] = useState(false)
-  const [mounted, setMounted] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<SavedPrompt | null>(null)
 
-  useEffect(() => {
-    setPrompts(getAllPrompts())
-    setMounted(true)
+  const loadPrompts = useCallback(async () => {
+    setLoading(true)
+    const data = await getAllPrompts()
+    setPrompts(data)
+    setLoading(false)
   }, [])
 
-  if (!mounted) return null
+  useEffect(() => {
+    loadPrompts()
+  }, [loadPrompts])
 
   const handleCreateNew = () => {
     setIsCreating(true)
@@ -40,31 +45,35 @@ export default function PromptsPage() {
     setEditingId(null)
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!editTitle.trim() || !editContent.trim()) return
-    savePrompt({
+    setSaving(true)
+    await savePrompt({
       id: editingId || undefined,
       title: editTitle.trim(),
       content: editContent.trim(),
     })
-    setPrompts(getAllPrompts())
+    await loadPrompts()
     setIsCreating(false)
     setEditingId(null)
+    setSaving(false)
   }
 
   const handleRequestDelete = (p: SavedPrompt) => {
     setDeleteTarget(p)
   }
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!deleteTarget) return
-    deletePrompt(deleteTarget.id)
-    setPrompts(getAllPrompts())
+    setSaving(true)
+    await deletePrompt(deleteTarget.id)
+    await loadPrompts()
     if (editingId === deleteTarget.id) {
       setEditingId(null)
       setIsCreating(false)
     }
     setDeleteTarget(null)
+    setSaving(false)
   }
 
   const handleCloseDeleteModal = () => {
@@ -72,6 +81,17 @@ export default function PromptsPage() {
   }
 
   const isEditorOpen = isCreating || editingId !== null
+
+  if (loading) {
+    return (
+      <div className="w-full py-8 max-w-4xl mx-auto">
+        <div className="flex items-center justify-center py-20 text-[#64748B]">
+          <Loader2 size={24} className="animate-spin mr-3" />
+          プロンプトを読み込み中...
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="w-full py-8 max-w-4xl mx-auto">
@@ -128,11 +148,15 @@ export default function PromptsPage() {
               <Button variant="ghost" onClick={handleCancel}>キャンセル</Button>
               <Button
                 variant="primary"
-                disabled={!editTitle.trim() || !editContent.trim()}
+                disabled={!editTitle.trim() || !editContent.trim() || saving}
                 onClick={handleSave}
               >
-                <Check size={18} className="mr-2" />
-                保存する
+                {saving ? (
+                  <Loader2 size={18} className="mr-2 animate-spin" />
+                ) : (
+                  <Check size={18} className="mr-2" />
+                )}
+                {saving ? '保存中...' : '保存する'}
               </Button>
             </div>
           </div>
@@ -199,8 +223,8 @@ export default function PromptsPage() {
               <Button variant="ghost" onClick={handleCloseDeleteModal}>
                 キャンセル
               </Button>
-              <Button variant="primary" onClick={handleConfirmDelete}>
-                削除する
+              <Button variant="primary" disabled={saving} onClick={handleConfirmDelete}>
+                {saving ? '削除中...' : '削除する'}
               </Button>
             </div>
           </div>
