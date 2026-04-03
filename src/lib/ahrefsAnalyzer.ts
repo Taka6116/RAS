@@ -1,9 +1,12 @@
 import type { AhrefsKeywordRow } from './ahrefsCsvParser'
 
+export type PriorityLevel = 3 | 2 | 1 | 0
+
 export interface ScoredKeyword extends AhrefsKeywordRow {
   opportunityScore: number
   trend: 'up' | 'down' | 'stable'
   detectedCategory: string
+  priority: PriorityLevel
 }
 
 export interface TrendKeyword {
@@ -53,6 +56,17 @@ function calcOpportunityScore(row: AhrefsKeywordRow): number {
   return Math.round((volScore * 4 + kdScore * 5 + cpcBonus * 1) * 10) / 10
 }
 
+function calcPriority(
+  score: number, kd: number, volume: number, trend: 'up' | 'down' | 'stable',
+): PriorityLevel {
+  if (score >= 60 && kd <= 30 && volume >= 500) return 3
+  if (score >= 40 && kd <= 30 && trend === 'up') return 3
+  if (score >= 40 && kd <= 50) return 2
+  if (kd <= 20 && volume >= 300) return 2
+  if (score >= 20) return 1
+  return 0
+}
+
 function detectSvTrend(svTrend: number[]): { trend: 'up' | 'down' | 'stable'; changePercent: number } {
   if (svTrend.length < 6) return { trend: 'stable', changePercent: 0 }
 
@@ -92,15 +106,17 @@ export function analyzeKeywords(keywords: AhrefsKeywordRow[]): ScoredKeyword[] {
       const trendInfo = row.svTrend.length > 0
         ? detectSvTrend(row.svTrend)
         : detectTrafficTrend(row)
+      const score = calcOpportunityScore(row)
 
       return {
         ...row,
-        opportunityScore: calcOpportunityScore(row),
+        opportunityScore: score,
         trend: trendInfo.trend,
         detectedCategory: detectCategory(row.keyword, row.category),
+        priority: calcPriority(score, row.kd, row.volume, trendInfo.trend),
       }
     })
-    .sort((a, b) => b.opportunityScore - a.opportunityScore)
+    .sort((a, b) => b.priority - a.priority || b.opportunityScore - a.opportunityScore)
 }
 
 export function detectTrends(keywords: AhrefsKeywordRow[]): TrendKeyword[] {

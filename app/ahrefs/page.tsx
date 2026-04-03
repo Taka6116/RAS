@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Upload, X, Search, Sparkles, Globe, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import type { AhrefsDataset, AhrefsDatasetType } from '@/lib/ahrefsCsvParser'
-import { analyzeKeywords, detectTrends, getCategoryCounts, mergeAndAnalyze, type ScoredKeyword, type TrendKeyword, type CategoryCount } from '@/lib/ahrefsAnalyzer'
+import { analyzeKeywords, detectTrends, getCategoryCounts, mergeAndAnalyze, type ScoredKeyword, type TrendKeyword, type CategoryCount, type PriorityLevel } from '@/lib/ahrefsAnalyzer'
 
 const PAGE_SIZE = 50
 
@@ -64,6 +64,7 @@ export default function AhrefsPage() {
 
   const [activeTab, setActiveTab] = useState<TabKey>('opportunity')
   const [selectedCategory, setSelectedCategory] = useState('all')
+  const [selectedPriority, setSelectedPriority] = useState<'all' | PriorityLevel>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [showCount, setShowCount] = useState(PAGE_SIZE)
 
@@ -144,6 +145,9 @@ export default function AhrefsPage() {
 
   const filtered = useMemo(() => {
     let list = activeData
+    if (selectedPriority !== 'all') {
+      list = list.filter(kw => kw.priority === selectedPriority)
+    }
     if (selectedCategory !== 'all') {
       list = list.filter(kw => kw.detectedCategory === selectedCategory)
     }
@@ -152,7 +156,7 @@ export default function AhrefsPage() {
       list = list.filter(kw => kw.keyword.toLowerCase().includes(q))
     }
     return list
-  }, [activeData, selectedCategory, searchQuery])
+  }, [activeData, selectedPriority, selectedCategory, searchQuery])
 
   const filteredTrends = useMemo(() => {
     let list = allTrends
@@ -171,10 +175,11 @@ export default function AhrefsPage() {
 
   const kwTotal = kwScored.length
   const organicTotal = organicScored.length
-  const opportunityCount = kwScored.filter(k => k.opportunityScore >= 50).length
+  const p3Count = allScored.filter(k => k.priority === 3).length
+  const p2Count = allScored.filter(k => k.priority === 2).length
   const trendCount = allTrends.length
 
-  useEffect(() => { setShowCount(PAGE_SIZE) }, [activeTab, selectedCategory, searchQuery])
+  useEffect(() => { setShowCount(PAGE_SIZE) }, [activeTab, selectedPriority, selectedCategory, searchQuery])
 
   const hasData = datasets.length > 0
 
@@ -263,11 +268,38 @@ export default function AhrefsPage() {
       {hasData && (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
             <SummaryCard label="KW総数" value={fmtNum(kwTotal)} />
-            <SummaryCard label="狙い目（スコア50+）" value={fmtNum(opportunityCount)} accent="blue" />
+            <SummaryCard label="★★★ 即攻め" value={fmtNum(p3Count)} accent="amber" />
+            <SummaryCard label="★★ 有望" value={fmtNum(p2Count)} accent="blue" />
             <SummaryCard label="競合KW" value={fmtNum(organicTotal)} accent="purple" />
             <SummaryCard label="トレンドKW" value={fmtNum(trendCount)} accent="green" />
+          </div>
+
+          {/* Priority pills */}
+          <div className="flex flex-wrap gap-2 mb-3">
+            {([
+              { key: 'all' as const, label: 'すべて', count: allScored.length },
+              { key: 3 as PriorityLevel, label: '★★★ 即攻め', count: p3Count },
+              { key: 2 as PriorityLevel, label: '★★ 有望', count: p2Count },
+              { key: 1 as PriorityLevel, label: '★ 余力', count: allScored.filter(k => k.priority === 1).length },
+              { key: 0 as PriorityLevel, label: '対象外', count: allScored.filter(k => k.priority === 0).length },
+            ]).map(p => (
+              <button
+                key={String(p.key)}
+                type="button"
+                onClick={() => setSelectedPriority(selectedPriority === p.key ? 'all' : p.key)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                  selectedPriority === p.key
+                    ? p.key === 3 ? 'bg-amber-500 text-white border-amber-500'
+                      : p.key === 2 ? 'bg-blue-500 text-white border-blue-500'
+                      : 'bg-[#009AE0] text-white border-[#009AE0]'
+                    : 'bg-white text-[#475569] border-[#D0E3F0] hover:border-[#009AE0]'
+                }`}
+              >
+                {p.label} ({fmtNum(p.count)})
+              </button>
+            ))}
           </div>
 
           {/* Category pills */}
@@ -349,18 +381,19 @@ export default function AhrefsPage() {
                   <table className="w-full text-sm table-fixed">
                     <thead>
                       <tr className="border-b border-[#D0E3F0] bg-[#F8FAFC]">
-                        <th className="text-left py-3 px-4 font-semibold text-[#64748B]" style={{ width: isOrganicTab ? '22%' : '30%' }}>キーワード</th>
-                        <th className="text-right py-3 px-4 font-semibold text-[#64748B]" style={{ width: '10%' }}>Volume</th>
-                        <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: '7%' }}>KD</th>
-                        <th className="text-right py-3 px-4 font-semibold text-[#64748B]" style={{ width: '8%' }}>CPC</th>
-                        <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: '8%' }}>スコア</th>
+                        <th className="text-left py-3 px-4 font-semibold text-[#64748B]" style={{ width: isOrganicTab ? '20%' : '28%' }}>キーワード</th>
+                        <th className="text-right py-3 px-4 font-semibold text-[#64748B]" style={{ width: isOrganicTab ? '9%' : '10%' }}>Volume</th>
+                        <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: isOrganicTab ? '6%' : '7%' }}>KD</th>
+                        <th className="text-right py-3 px-4 font-semibold text-[#64748B]" style={{ width: isOrganicTab ? '7%' : '8%' }}>CPC</th>
+                        <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: isOrganicTab ? '8%' : '9%' }}>優先度</th>
+                        <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: isOrganicTab ? '7%' : '8%' }}>スコア</th>
                         {isOrganicTab && (
                           <>
-                            <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: '7%' }}>順位</th>
-                            <th className="text-right py-3 px-4 font-semibold text-[#64748B]" style={{ width: '10%' }}>流入変動</th>
+                            <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: '6%' }}>順位</th>
+                            <th className="text-right py-3 px-4 font-semibold text-[#64748B]" style={{ width: '9%' }}>流入変動</th>
                           </>
                         )}
-                        <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: isOrganicTab ? '10%' : '14%' }}>カテゴリ</th>
+                        <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: isOrganicTab ? '10%' : '13%' }}>カテゴリ</th>
                         <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: isOrganicTab ? '10%' : '11%' }}>アクション</th>
                       </tr>
                     </thead>
@@ -398,6 +431,9 @@ export default function AhrefsPage() {
                             {kw.cpc > 0 ? `¥${fmtNum(Math.round(kw.cpc * 150))}` : '-'}
                           </td>
                           <td className="py-3 px-4 text-center">
+                            <PriorityBadge level={kw.priority} />
+                          </td>
+                          <td className="py-3 px-4 text-center">
                             <span className="text-sm font-bold" style={{ color: '#009AE0' }}>
                               {kw.opportunityScore}
                             </span>
@@ -426,9 +462,9 @@ export default function AhrefsPage() {
                               type="button"
                               onClick={() => handleWriteArticle(kw)}
                               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white transition-colors"
-                              style={{ backgroundColor: '#009AE0' }}
-                              onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#0080C0')}
-                              onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#009AE0')}
+                              style={{ backgroundColor: kw.priority === 3 ? '#E67E22' : '#009AE0' }}
+                              onMouseEnter={e => (e.currentTarget.style.backgroundColor = kw.priority === 3 ? '#CF6D17' : '#0080C0')}
+                              onMouseLeave={e => (e.currentTarget.style.backgroundColor = kw.priority === 3 ? '#E67E22' : '#009AE0')}
                             >
                               <Sparkles size={12} />
                               記事作成
@@ -438,7 +474,7 @@ export default function AhrefsPage() {
                       ))}
                       {visible.length === 0 && (
                         <tr>
-                          <td colSpan={isOrganicTab ? 9 : 7} className="py-12 text-center text-[#94A3B8] text-sm">
+                          <td colSpan={isOrganicTab ? 10 : 8} className="py-12 text-center text-[#94A3B8] text-sm">
                             {activeTab === 'opportunity' && kwScored.length === 0
                               ? 'Keywords ExplorerのCSVをアップロードしてください'
                               : activeTab === 'organic' && organicScored.length === 0
@@ -471,11 +507,12 @@ export default function AhrefsPage() {
   )
 }
 
-function SummaryCard({ label, value, accent }: { label: string; value: string; accent?: 'green' | 'blue' | 'purple' }) {
+function SummaryCard({ label, value, accent }: { label: string; value: string; accent?: 'green' | 'blue' | 'purple' | 'amber' }) {
   const styles = {
     green: 'bg-green-50 border-green-200 text-green-700',
     blue: 'bg-blue-50 border-blue-200 text-blue-700',
     purple: 'bg-purple-50 border-purple-200 text-purple-700',
+    amber: 'bg-amber-50 border-amber-200 text-amber-700',
   }
   const s = accent ? styles[accent] : 'bg-white border-[#D0E3F0] text-[#1A1A2E]'
   const [bgBorder, textColor] = [s.split(' ').slice(0, 2).join(' '), s.split(' ').slice(2).join(' ')]
@@ -485,6 +522,25 @@ function SummaryCard({ label, value, accent }: { label: string; value: string; a
       <div className={`text-2xl font-bold ${textColor}`}>{value}</div>
     </div>
   )
+}
+
+function PriorityBadge({ level }: { level: PriorityLevel }) {
+  if (level === 3) return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-amber-50 text-amber-600 border border-amber-200">
+      ★★★
+    </span>
+  )
+  if (level === 2) return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-blue-50 text-blue-600 border border-blue-200">
+      ★★
+    </span>
+  )
+  if (level === 1) return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-50 text-gray-500 border border-gray-200">
+      ★
+    </span>
+  )
+  return <span className="text-xs text-gray-300">−</span>
 }
 
 function TrendsTableView({ trends }: { trends: TrendKeyword[] }) {
