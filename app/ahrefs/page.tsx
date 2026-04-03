@@ -141,7 +141,7 @@ export default function AhrefsPage() {
     }
   }, [activeTab, kwScored, organicScored, allScored])
 
-  const categoryCounts = useMemo(() => getCategoryCounts(allScored), [allScored])
+  const categoryCounts = useMemo(() => getCategoryCounts(activeData), [activeData])
 
   const filtered = useMemo(() => {
     let list = activeData
@@ -178,7 +178,7 @@ export default function AhrefsPage() {
   const p2Count = activeData.filter(k => k.priority === 2).length
   const trendCount = allTrends.length
 
-  useEffect(() => { setShowCount(PAGE_SIZE); setSelectedPriority('all') }, [activeTab])
+  useEffect(() => { setShowCount(PAGE_SIZE); setSelectedPriority('all'); setSelectedCategory('all') }, [activeTab])
   useEffect(() => { setShowCount(PAGE_SIZE) }, [selectedPriority, selectedCategory, searchQuery])
 
   const hasData = datasets.length > 0
@@ -314,7 +314,7 @@ export default function AhrefsPage() {
                   : 'bg-white text-[#475569] border-[#D0E3F0] hover:border-[#009AE0]'
               }`}
             >
-              すべて ({fmtNum(allScored.length)})
+              すべて ({fmtNum(activeData.length)})
             </button>
             {categoryCounts.map(cc => (
               <button
