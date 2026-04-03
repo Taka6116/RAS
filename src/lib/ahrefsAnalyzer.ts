@@ -9,8 +9,11 @@ export interface ScoredKeyword extends AhrefsKeywordRow {
 export interface TrendKeyword {
   keyword: string
   volume: number
+  previousVolume: number
   trend: 'up' | 'down' | 'stable'
   changePercent: number
+  isNew: boolean
+  detectedCategory: string
 }
 
 const CATEGORIES = [
@@ -107,15 +110,32 @@ export function detectTrends(keywords: AhrefsKeywordRow[]): TrendKeyword[] {
       const info = kw.svTrend.length >= 6
         ? detectSvTrend(kw.svTrend)
         : detectTrafficTrend(kw)
+
+      let previousVolume = 0
+      if (kw.svTrend.length >= 12) {
+        const older6 = kw.svTrend.slice(-12, -6)
+        previousVolume = Math.round(older6.reduce((a, b) => a + b, 0) / older6.length)
+      } else if (kw.previousTraffic != null) {
+        previousVolume = kw.previousTraffic
+      }
+
+      const isNew = previousVolume === 0 && kw.volume > 0
+
       return {
         keyword: kw.keyword,
         volume: kw.volume,
+        previousVolume,
         trend: info.trend,
-        changePercent: info.changePercent,
+        changePercent: isNew ? 100 : info.changePercent,
+        isNew,
+        detectedCategory: detectCategory(kw.keyword, kw.category),
       }
     })
     .filter(t => t.trend !== 'stable')
-    .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent))
+    .sort((a, b) => {
+      if (a.isNew !== b.isNew) return a.isNew ? -1 : 1
+      return b.volume - a.volume
+    })
 }
 
 export function getCategories(scored: ScoredKeyword[]): string[] {

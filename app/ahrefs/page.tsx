@@ -154,6 +154,18 @@ export default function AhrefsPage() {
     return list
   }, [activeData, selectedCategory, searchQuery])
 
+  const filteredTrends = useMemo(() => {
+    let list = allTrends
+    if (selectedCategory !== 'all') {
+      list = list.filter(t => t.detectedCategory === selectedCategory)
+    }
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      list = list.filter(t => t.keyword.toLowerCase().includes(q))
+    }
+    return list
+  }, [allTrends, selectedCategory, searchQuery])
+
   const visible = filtered.slice(0, showCount)
   const isOrganicTab = activeTab === 'organic'
 
@@ -313,60 +325,61 @@ export default function AhrefsPage() {
             ))}
           </div>
 
+          {/* Search bar (shared across all tabs) */}
+          <div className="relative mb-4">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="キーワードを検索..."
+              className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border border-[#D0E3F0] bg-white focus:outline-none focus:ring-2 focus:ring-[#009AE0]/30"
+            />
+          </div>
+
           {/* Trends tab */}
           {activeTab === 'trends' ? (
-            <TrendsView trends={allTrends} />
+            <TrendsTableView trends={filteredTrends} />
           ) : (
             <>
-              {/* Search bar */}
-              <div className="relative mb-4">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="キーワードを検索..."
-                  className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border border-[#D0E3F0] bg-white focus:outline-none focus:ring-2 focus:ring-[#009AE0]/30"
-                />
-              </div>
 
               {/* Table */}
               <div className="rounded-xl border border-[#D0E3F0] bg-white overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm table-fixed">
                     <thead>
                       <tr className="border-b border-[#D0E3F0] bg-[#F8FAFC]">
-                        <th className="text-left py-3 px-4 font-semibold text-[#64748B] min-w-[200px]">キーワード</th>
-                        <th className="text-right py-3 px-4 font-semibold text-[#64748B] w-[90px]">Volume</th>
-                        <th className="text-center py-3 px-4 font-semibold text-[#64748B] w-[60px]">KD</th>
-                        <th className="text-right py-3 px-4 font-semibold text-[#64748B] w-[70px]">CPC</th>
-                        <th className="text-center py-3 px-4 font-semibold text-[#64748B] w-[70px]">スコア</th>
+                        <th className="text-left py-3 px-4 font-semibold text-[#64748B]" style={{ width: isOrganicTab ? '22%' : '30%' }}>キーワード</th>
+                        <th className="text-right py-3 px-4 font-semibold text-[#64748B]" style={{ width: '10%' }}>Volume</th>
+                        <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: '7%' }}>KD</th>
+                        <th className="text-right py-3 px-4 font-semibold text-[#64748B]" style={{ width: '8%' }}>CPC</th>
+                        <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: '8%' }}>スコア</th>
                         {isOrganicTab && (
                           <>
-                            <th className="text-center py-3 px-4 font-semibold text-[#64748B] w-[60px]">順位</th>
-                            <th className="text-right py-3 px-4 font-semibold text-[#64748B] w-[90px]">流入変動</th>
+                            <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: '7%' }}>順位</th>
+                            <th className="text-right py-3 px-4 font-semibold text-[#64748B]" style={{ width: '10%' }}>流入変動</th>
                           </>
                         )}
-                        <th className="text-left py-3 px-4 font-semibold text-[#64748B] w-[90px]">カテゴリ</th>
-                        <th className="text-right py-3 px-4 font-semibold text-[#64748B] w-[90px]">アクション</th>
+                        <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: isOrganicTab ? '10%' : '14%' }}>カテゴリ</th>
+                        <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: isOrganicTab ? '10%' : '11%' }}>アクション</th>
                       </tr>
                     </thead>
                     <tbody>
                       {visible.map((kw, i) => (
                         <tr
                           key={`${kw.keyword}-${i}`}
-                          className={`border-b border-[#D0E3F0] hover:bg-[#F8FAFC]/60 transition-colors ${kw.branded ? 'opacity-40' : ''}`}
+                          className="border-b border-[#D0E3F0] hover:bg-[#F8FAFC]/60 transition-colors"
                         >
                           <td className="py-3 px-4">
-                            <div className="font-semibold text-[#1A1A2E]">{kw.keyword}</div>
+                            <div className="font-semibold text-[#1A1A2E] truncate">{kw.keyword}</div>
                             {kw.url && (
                               <a
                                 href={kw.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-[11px] text-[#009AE0] hover:underline truncate block max-w-[280px]"
+                                className="text-[11px] text-[#009AE0] hover:underline truncate block"
                               >
-                                {kw.url.replace(/^https?:\/\//, '').slice(0, 60)}
+                                {kw.url.replace(/^https?:\/\//, '').slice(0, 50)}
                               </a>
                             )}
                           </td>
@@ -403,12 +416,12 @@ export default function AhrefsPage() {
                               </td>
                             </>
                           )}
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-4 text-center">
                             <span className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-[#F1F5F9] text-[#475569]">
                               {kw.detectedCategory}
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-right">
+                          <td className="py-3 px-4 text-center">
                             <button
                               type="button"
                               onClick={() => handleWriteArticle(kw)}
@@ -474,7 +487,7 @@ function SummaryCard({ label, value, accent }: { label: string; value: string; a
   )
 }
 
-function TrendsView({ trends }: { trends: TrendKeyword[] }) {
+function TrendsTableView({ trends }: { trends: TrendKeyword[] }) {
   if (trends.length === 0) {
     return (
       <div className="rounded-xl border border-[#D0E3F0] bg-white p-12 text-center text-sm text-[#94A3B8]">
@@ -483,23 +496,51 @@ function TrendsView({ trends }: { trends: TrendKeyword[] }) {
     )
   }
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-      {trends.map(t => (
-        <div key={t.keyword} className="flex items-center justify-between px-4 py-3 rounded-lg bg-white border border-[#D0E3F0]">
-          <span className="text-sm font-medium text-[#1A1A2E] truncate mr-3">{t.keyword}</span>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <span className="text-xs text-[#64748B]">Vol: {fmtNum(t.volume)}</span>
-            <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-bold border ${
-              t.trend === 'up'
-                ? 'bg-green-50 text-green-700 border-green-200'
-                : 'bg-red-50 text-red-600 border-red-200'
-            }`}>
-              {t.trend === 'up' ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-              {t.changePercent > 0 ? '+' : ''}{t.changePercent}%
-            </span>
-          </div>
-        </div>
-      ))}
+    <div className="rounded-xl border border-[#D0E3F0] bg-white overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm table-fixed">
+          <thead>
+            <tr className="border-b border-[#D0E3F0] bg-[#F8FAFC]">
+              <th className="text-left py-3 px-4 font-semibold text-[#64748B]" style={{ width: '35%' }}>キーワード</th>
+              <th className="text-right py-3 px-4 font-semibold text-[#64748B]" style={{ width: '15%' }}>前回Vol</th>
+              <th className="text-right py-3 px-4 font-semibold text-[#64748B]" style={{ width: '15%' }}>今回Vol</th>
+              <th className="text-right py-3 px-4 font-semibold text-[#64748B]" style={{ width: '15%' }}>変化率</th>
+              <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: '10%' }}>状態</th>
+            </tr>
+          </thead>
+          <tbody>
+            {trends.map((t, i) => (
+              <tr key={`${t.keyword}-${i}`} className="border-b border-[#D0E3F0] hover:bg-[#F8FAFC]/60 transition-colors">
+                <td className="py-3 px-4">
+                  <span className="font-semibold text-[#1A1A2E]">{t.keyword}</span>
+                </td>
+                <td className="py-3 px-4 text-right text-[#64748B]">
+                  {fmtNum(t.previousVolume)}
+                </td>
+                <td className="py-3 px-4 text-right font-medium text-[#1A1A2E]">
+                  {fmtNum(t.volume)}
+                </td>
+                <td className="py-3 px-4 text-right">
+                  <span className={t.changePercent > 0 ? 'text-green-600 font-semibold' : t.changePercent < 0 ? 'text-red-600 font-semibold' : 'text-[#64748B]'}>
+                    {t.changePercent > 0 ? '+' : ''}{t.changePercent}%
+                  </span>
+                </td>
+                <td className="py-3 px-4 text-center">
+                  {t.isNew ? (
+                    <span className="inline-block px-2.5 py-0.5 rounded text-[10px] font-bold bg-[#F1F5F9] text-[#64748B] border border-[#D0E3F0]">
+                      NEW
+                    </span>
+                  ) : t.trend === 'up' ? (
+                    <TrendingUp size={16} className="inline text-green-600" />
+                  ) : (
+                    <TrendingDown size={16} className="inline text-red-500" />
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
