@@ -57,9 +57,12 @@ export default function ArticlesPage() {
     setVisibleCount(ARTICLE_CARD_PAGE_SIZE)
   }, [articles, statusFilter, searchQuery, sortKey])
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('この記事を削除しますか？')) return
-    await deleteArticle(id)
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
+
+  const handleDeleteConfirmed = async () => {
+    if (!deleteTargetId) return
+    await deleteArticle(deleteTargetId)
+    setDeleteTargetId(null)
     await reloadArticles()
   }
 
@@ -138,6 +141,35 @@ export default function ArticlesPage() {
 
   return (
     <div className="w-full pt-6 pb-16 px-4 max-w-7xl mx-auto">
+      {deleteTargetId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div
+            className="w-full max-w-sm rounded-xl p-6 text-center"
+            style={{ background: 'white', border: '1px solid #D0E3F0', boxShadow: '0 8px 30px rgba(0,0,0,0.12)' }}
+          >
+            <p className="text-sm font-semibold mb-5" style={{ color: '#1A1A2E' }}>
+              この記事を削除しますか？
+            </p>
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={handleDeleteConfirmed}
+                className="px-6 py-2.5 rounded-lg text-sm font-semibold text-white"
+                style={{ background: '#DC2626' }}
+              >
+                削除する
+              </button>
+              <button
+                onClick={() => setDeleteTargetId(null)}
+                className="px-6 py-2.5 rounded-lg text-sm font-medium"
+                style={{ background: '#F8FAFC', border: '1px solid #D0E3F0', color: '#64748B' }}
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold" style={{ color: '#1A1A2E' }}>
@@ -379,7 +411,7 @@ export default function ArticlesPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleDelete(article.id)}
+                      onClick={() => setDeleteTargetId(article.id)}
                       className="p-2 rounded-lg hover:bg-[#FEF2F2] text-[#EF4444]"
                       aria-label="削除"
                     >

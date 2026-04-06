@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, ChangeEvent } from 'react'
+import { useRef, useState, ChangeEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { ArticleData, ProcessingState, Step } from '@/lib/types'
@@ -16,7 +16,7 @@ interface ImageResultProps {
   /** 画像生成失敗時に表示するAPIエラーメッセージ */
   fireflyError?: string | null
   onBack: () => void
-  onSaveDraft: () => Promise<string | undefined> | string | void
+  onSaveDraft: (options?: { silent?: boolean }) => Promise<string | undefined> | string | void
   onNext: () => void
   onRegenerate: () => void
   /** 初回の画像生成を開始する（クリックで呼ぶ） */
@@ -43,25 +43,31 @@ export default function ImageResult({
 }: ImageResultProps) {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [navigating, setNavigating] = useState(false)
 
   const handlePreview = async () => {
-    const savedId = await onSaveDraft()
-    const finalArticleId = savedId || articleId
-    
-    const content = article.refinedContent || article.originalContent || ''
-    sessionStorage.setItem('preview_content', content)
-    await setSessionPreviewImage(article.imageUrl || null)
-    const params = new URLSearchParams({
-      title: article.refinedTitle?.trim() || article.title || '',
-      category: 'お役立ち情報',
-      date: new Date().toLocaleDateString('ja-JP', {
-        year: 'numeric',
-        month: 'numeric',
-        day: 'numeric',
-      }).replace(/\//g, '.'),
-    })
-    if (finalArticleId) params.set('articleId', finalArticleId)
-    router.push(`/preview?${params.toString()}`)
+    setNavigating(true)
+    try {
+      const savedId = await onSaveDraft({ silent: true })
+      const finalArticleId = savedId || articleId
+
+      const content = article.refinedContent || article.originalContent || ''
+      sessionStorage.setItem('preview_content', content)
+      await setSessionPreviewImage(article.imageUrl || null)
+      const params = new URLSearchParams({
+        title: article.refinedTitle?.trim() || article.title || '',
+        category: 'お役立ち情報',
+        date: new Date().toLocaleDateString('ja-JP', {
+          year: 'numeric',
+          month: 'numeric',
+          day: 'numeric',
+        }).replace(/\//g, '.'),
+      })
+      if (finalArticleId) params.set('articleId', finalArticleId)
+      router.push(`/preview?${params.toString()}`)
+    } catch {
+      setNavigating(false)
+    }
   }
 
   const handleDownload = () => {
@@ -92,6 +98,7 @@ export default function ImageResult({
 
   return (
     <div className="w-full pt-6 pb-12">
+      {navigating && <PreviewNavigatingOverlay title={article.refinedTitle?.trim() || article.title || ''} />}
       {/* 2カラム：左＝メインコンテンツ、右＝StepIndicator */}
       <div className="flex gap-8 items-start">
         {/* 左：メインコンテンツ（可変幅） */}
@@ -176,7 +183,7 @@ export default function ImageResult({
               <div className="w-full max-w-[640px] flex items-center justify-between gap-4 pt-2 border-t border-[#D0E3F0]">
                 <button
                   type="button"
-                  onClick={onSaveDraft}
+                  onClick={() => onSaveDraft()}
                   className="flex items-center gap-2 px-5 py-3 rounded-lg text-sm font-medium flex-shrink-0"
                   style={{ background: '#F0F4FF', border: '1.5px solid #C7D7FF', color: '#0A2540' }}
                 >
@@ -210,6 +217,111 @@ export default function ImageResult({
           Gemini推敲に戻る
         </Button>
       </div>
+    </div>
+  )
+}
+
+function PreviewNavigatingOverlay({ title }: { title: string }) {
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#fff',
+      }}
+    >
+      <style>{`
+        @keyframes nav-pulse {
+          0%, 100% { transform: scale(1); opacity: 0.6; }
+          50% { transform: scale(1.15); opacity: 1; }
+        }
+        @keyframes nav-progress {
+          0% { width: 0; }
+          60% { width: 70%; }
+          100% { width: 100%; }
+        }
+        @keyframes nav-fade-in {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+
+      <div
+        style={{
+          width: 48,
+          height: 48,
+          borderRadius: '50%',
+          background: 'linear-gradient(135deg, #1a2744, #3EA8D8)',
+          animation: 'nav-pulse 1.4s ease-in-out infinite',
+          marginBottom: 28,
+        }}
+      />
+
+      <p
+        style={{
+          fontSize: 15,
+          fontWeight: 600,
+          color: '#1a2744',
+          fontFamily: '"Noto Sans JP", sans-serif',
+          marginBottom: 12,
+          animation: 'nav-fade-in 0.5s ease-out',
+        }}
+      >
+        プレビューを準備しています
+      </p>
+
+      <p
+        style={{
+          fontSize: 12,
+          color: '#94A3B8',
+          fontFamily: '"Noto Sans JP", sans-serif',
+          marginBottom: 20,
+          animation: 'nav-fade-in 0.6s ease-out 0.1s both',
+        }}
+      >
+        下書きを保存中...
+      </p>
+
+      <div
+        style={{
+          width: 220,
+          height: 3,
+          borderRadius: 2,
+          background: '#E8ECF0',
+          overflow: 'hidden',
+          marginBottom: 24,
+        }}
+      >
+        <div
+          style={{
+            height: '100%',
+            borderRadius: 2,
+            background: 'linear-gradient(90deg, #3EA8D8, #1a2744)',
+            animation: 'nav-progress 2.5s ease-out forwards',
+          }}
+        />
+      </div>
+
+      {title && (
+        <p
+          style={{
+            fontSize: 13,
+            color: '#CBD5E1',
+            fontFamily: '"Noto Sans JP", sans-serif',
+            maxWidth: 400,
+            textAlign: 'center',
+            lineHeight: 1.6,
+            animation: 'nav-fade-in 0.7s ease-out 0.2s both',
+          }}
+        >
+          {title}
+        </p>
+      )}
     </div>
   )
 }

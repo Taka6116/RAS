@@ -318,7 +318,7 @@ function EditorContent() {
     [article, currentArticleId, router]
   )
 
-  const handleSaveDraft = useCallback(async () => {
+  const handleSaveDraft = useCallback(async (options?: { silent?: boolean }) => {
     const idFromUrl = searchParams.get('articleId')
     const id = currentArticleId ?? idFromUrl ?? String(Date.now())
     setCurrentArticleId(id)
@@ -349,7 +349,9 @@ function EditorContent() {
       return
     }
 
-    setToastMessage('下書きを保存しました')
+    if (!options?.silent) {
+      setToastMessage('下書きを保存しました')
+    }
     return id
   }, [article, currentArticleId, searchParams, slug, wordpressTagsInput, updateArticle])
 
