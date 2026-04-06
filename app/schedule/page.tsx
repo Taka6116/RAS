@@ -104,18 +104,12 @@ export default function SchedulePage() {
         return snapScheduledTimeToQuarterHour(a.scheduledTime) !== a.scheduledTime.trim()
       })
       if (toFix.length) {
-        await Promise.all(
-          toFix.map(a =>
-            saveArticle({
-              ...a,
-              scheduledTime: snapScheduledTimeToQuarterHour(a.scheduledTime!),
-            })
-          )
-        )
-        setArticles(await getAllArticles())
-      } else {
-        setArticles(all)
+        for (const a of toFix) {
+          a.scheduledTime = snapScheduledTimeToQuarterHour(a.scheduledTime!)
+          await saveArticle(a)
+        }
       }
+      setArticles(all)
       setMounted(true)
     })
   }, [])
@@ -169,35 +163,22 @@ export default function SchedulePage() {
   ]
   while (calendarCells.length % 7 !== 0) calendarCells.push(null)
 
-  const handleScheduleChange = async (articleId: string, date: string) => {
-    const all = await getAllArticles()
-    const a = all.find(x => x.id === articleId)
-    if (a) {
-      a.scheduledDate = date
-      await saveArticle(a)
-      setArticles(await getAllArticles())
-    }
+  const updateArticleField = async (articleId: string, updates: Partial<SavedArticle>) => {
+    setArticles(prev => prev.map(a => a.id === articleId ? { ...a, ...updates } : a))
+    const a = articles.find(x => x.id === articleId)
+    if (a) await saveArticle({ ...a, ...updates })
   }
 
-  const handleTimeChange = async (articleId: string, time: string) => {
-    const normalized = snapScheduledTimeToQuarterHour(time)
-    const all = await getAllArticles()
-    const a = all.find(x => x.id === articleId)
-    if (a) {
-      a.scheduledTime = normalized
-      await saveArticle(a)
-      setArticles(await getAllArticles())
-    }
+  const handleScheduleChange = (articleId: string, date: string) => {
+    updateArticleField(articleId, { scheduledDate: date })
   }
 
-  const handleSlugChange = async (articleId: string, newSlug: string) => {
-    const all = await getAllArticles()
-    const a = all.find(x => x.id === articleId)
-    if (a) {
-      a.slug = newSlug
-      await saveArticle(a)
-      setArticles(await getAllArticles())
-    }
+  const handleTimeChange = (articleId: string, time: string) => {
+    updateArticleField(articleId, { scheduledTime: snapScheduledTimeToQuarterHour(time) })
+  }
+
+  const handleSlugChange = (articleId: string, newSlug: string) => {
+    updateArticleField(articleId, { slug: newSlug })
   }
 
   const handleScheduledPublish = async (article: SavedArticle) => {
@@ -227,17 +208,13 @@ export default function SchedulePage() {
       const data = await res.json()
 
       if (res.ok && data.postId) {
-        const all = await getAllArticles()
-        const a = all.find(x => x.id === article.id)
-        if (a) {
-          a.status = 'published'
-          a.wordpressUrl = data.wordpressUrl
-          if (typeof data.status === 'string' && data.status) {
-            a.wordpressPostStatus = data.status
-          }
-          await saveArticle(a)
-          setArticles(await getAllArticles())
+        const updates: Partial<SavedArticle> = {
+          status: 'published',
+          wordpressUrl: data.wordpressUrl,
+          ...(typeof data.status === 'string' && data.status ? { wordpressPostStatus: data.status } : {}),
         }
+        setArticles(prev => prev.map(a => a.id === article.id ? { ...a, ...updates } : a))
+        await saveArticle({ ...article, ...updates })
         const dateObj = new Date(scheduledDate)
         const timeStr = `${dateObj.getMonth() + 1}月${dateObj.getDate()}日 ${article.scheduledTime}`
         setPublishResult({ articleId: article.id, success: true, message: `予約投稿しました（${timeStr} 公開予定）` })
@@ -253,14 +230,12 @@ export default function SchedulePage() {
 
   const handleDeleteConfirmed = async () => {
     if (!deleteTargetId) return
-    const all = await getAllArticles()
-    const target = all.find(x => x.id === deleteTargetId)
+    const target = articles.find(x => x.id === deleteTargetId)
     if (target) {
-      target.scheduledDate = undefined
-      target.scheduledTime = undefined
-      await saveArticle(target)
+      const updated = { ...target, scheduledDate: undefined, scheduledTime: undefined }
+      setArticles(prev => prev.map(a => a.id === deleteTargetId ? updated : a))
+      await saveArticle(updated)
     }
-    setArticles(await getAllArticles())
     setDeleteTargetId(null)
   }
 

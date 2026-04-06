@@ -289,16 +289,12 @@ P（結論）→ R（理由）→ E（RICE CLOUD事例・具体例）→ P（ま
 
   const raw = await generateContentWithFallback(apiKey, prompt)
 
-  // **太字** は維持。斜体(*単一*)と # 見出しのみ除去
   let text = raw
-    .replace(/\*\*(.+?)\*\*/g, '%%BOLD_START%%$1%%BOLD_END%%')
-  text = text
+    .replace(/\*\*(.+?)\*\*/g, '$1')
     .replace(/\*(.*?)\*/g, '$1')
+    .replace(/^\s*\*\s+/gm, '・ ')
     .replace(/\*/g, '')
     .replace(/^#{1,6}\s+/gm, '')
-  text = text
-    .replace(/%%BOLD_START%%/g, '**')
-    .replace(/%%BOLD_END%%/g, '**')
 
   const titleMatch = text.match(/タイトル：(.+)/)
   const separatorIndex = text.indexOf('---')
@@ -428,20 +424,13 @@ ${targetKeyword?.trim() ? `ターゲットキーワード：${targetKeyword}` : 
 ※「---」の下には推敲後本文のみを記述してください。`.trim()
 
   let text = await generateContentWithFallback(apiKey, prompt)
-  // **太字** は維持。斜体(*単一*)と箇条書きの * のみ ・ に変換
-  // 1) まず **太字** を一時プレースホルダに退避
-  text = text.replace(/\*\*(.+?)\*\*/g, '%%BOLD_START%%$1%%BOLD_END%%')
-  // 2) 残った * を処理（斜体・箇条書き）
   text = text
+    .replace(/\*\*(.+?)\*\*/g, '$1')
     .replace(/\*(.*?)\*/g, '$1')
     .replace(/^\s*\*\s+/gm, '・ ')
     .replace(/\*\s+/g, '・ ')
     .replace(/\*/g, '')
     .replace(/^#{1,6}\s+/gm, '')
-  // 3) **太字** を復元
-  text = text
-    .replace(/%%BOLD_START%%/g, '**')
-    .replace(/%%BOLD_END%%/g, '**')
 
   const titleMatch = text.match(/タイトル：(.+)/)
   const separatorIndex = text.indexOf('---')

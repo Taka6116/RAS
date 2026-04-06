@@ -83,6 +83,27 @@
              </div>
            )}
 
+          {/* 推敲サマリー */}
+          {geminiStatus === 'success' && (() => {
+            const origLen = article.originalContent.length
+            const refLen = refinedContent.length
+            const diff = refLen - origLen
+            const titleChanged = Boolean(article.refinedTitle) && article.refinedTitle !== article.title
+            const origLines = article.originalContent.split('\n')
+            const refLines = refinedContent.split('\n')
+            const changedLines = refLines.filter((l, i) => l !== (origLines[i] ?? '')).length
+            return (
+              <div className="rounded-lg bg-blue-50 border border-blue-200 px-5 py-3 mb-4 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+                <span className="font-semibold text-blue-800">推敲サマリー</span>
+                <span className="text-blue-700">タイトル: {titleChanged ? '変更あり' : '変更なし'}</span>
+                <span className="text-blue-700">
+                  文字数: {origLen.toLocaleString()} → {refLen.toLocaleString()} ({diff >= 0 ? '+' : ''}{diff.toLocaleString()})
+                </span>
+                <span className="text-blue-700">変更行: 約{changedLines}箇所</span>
+              </div>
+            )
+          })()}
+
           {/* 2カラム（各カラム上にタイトルボックス） */}
           {(geminiStatus === 'success' || geminiStatus === 'error') && (
             <div
