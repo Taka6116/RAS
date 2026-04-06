@@ -131,6 +131,99 @@ function formatContent(content: string): string {
   return supervisorBlock + bodyHtml
 }
 
+function PreviewLoading({ title }: { title: string }) {
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#fff',
+      }}
+    >
+      <style>{`
+        @keyframes rc-pulse {
+          0%, 100% { transform: scale(1); opacity: 0.6; }
+          50% { transform: scale(1.15); opacity: 1; }
+        }
+        @keyframes rc-progress {
+          0% { width: 0; }
+          60% { width: 70%; }
+          100% { width: 100%; }
+        }
+        @keyframes rc-fade-in {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+
+      <div
+        style={{
+          width: 48,
+          height: 48,
+          borderRadius: '50%',
+          background: 'linear-gradient(135deg, #1a2744, #3EA8D8)',
+          animation: 'rc-pulse 1.4s ease-in-out infinite',
+          marginBottom: 28,
+        }}
+      />
+
+      <p
+        style={{
+          fontSize: 15,
+          fontWeight: 600,
+          color: '#1a2744',
+          fontFamily: '"Noto Sans JP", sans-serif',
+          marginBottom: 20,
+          animation: 'rc-fade-in 0.5s ease-out',
+        }}
+      >
+        記事プレビューを準備しています
+      </p>
+
+      <div
+        style={{
+          width: 220,
+          height: 3,
+          borderRadius: 2,
+          background: '#E8ECF0',
+          overflow: 'hidden',
+          marginBottom: 24,
+        }}
+      >
+        <div
+          style={{
+            height: '100%',
+            borderRadius: 2,
+            background: 'linear-gradient(90deg, #3EA8D8, #1a2744)',
+            animation: 'rc-progress 1.8s ease-out forwards',
+          }}
+        />
+      </div>
+
+      {title && title !== '（タイトルなし）' && (
+        <p
+          style={{
+            fontSize: 13,
+            color: '#94A3B8',
+            fontFamily: '"Noto Sans JP", sans-serif',
+            maxWidth: 400,
+            textAlign: 'center',
+            lineHeight: 1.6,
+            animation: 'rc-fade-in 0.7s ease-out 0.2s both',
+          }}
+        >
+          {title}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function PreviewContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -140,6 +233,7 @@ function PreviewContent() {
   const [storageContent, setStorageContent] = useState('')
   const [imageUrl, setImageUrl] = useState('')
   const [wordpressUrl, setWordpressUrl] = useState<string | null>(null)
+  const [ready, setReady] = useState(false)
 
   const isPublishedPreview = searchParams.get('source') === 'published'
 
@@ -176,6 +270,8 @@ function PreviewContent() {
       const sessionImage = sessionStorage.getItem('preview_image')
       setImageUrl(sessionImage || searchParams.get('imageUrl') || '')
     }
+
+    requestAnimationFrame(() => setReady(true))
   }, [searchParams])
 
   const content = contentFromUrl || storageContent
@@ -214,8 +310,16 @@ function PreviewContent() {
     [articleId, router, handlePublish]
   )
 
+  if (!ready) return <PreviewLoading title={title} />
+
   return (
-    <div style={{ minHeight: '100vh', background: '#fff' }}>
+    <div style={{ minHeight: '100vh', background: '#fff', animation: 'rc-fade-in 0.4s ease-out' }}>
+      <style>{`
+        @keyframes rc-fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+      `}</style>
       {/* 固定バナー（プレビューモード） */}
       <div
         style={{
@@ -792,7 +896,7 @@ function PreviewContent() {
 
 export default function PreviewPage() {
   return (
-    <Suspense fallback={<div style={{ padding: 40, textAlign: 'center' }}>読み込み中...</div>}>
+    <Suspense fallback={<PreviewLoading title="" />}>
       <PreviewContent />
     </Suspense>
   )
