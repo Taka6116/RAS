@@ -1,6 +1,12 @@
 import { postToWordPress } from '@/lib/wordpress'
 
 export async function POST(request: Request) {
+  console.log('=== WP ENV DEBUG ===')
+  console.log('WORDPRESS_URL:', process.env.WORDPRESS_URL ? `SET (${process.env.WORDPRESS_URL.length} chars)` : 'MISSING')
+  console.log('WORDPRESS_USERNAME:', process.env.WORDPRESS_USERNAME ? `SET (${process.env.WORDPRESS_USERNAME.length} chars)` : 'MISSING')
+  console.log('WORDPRESS_APP_PASSWORD:', process.env.WORDPRESS_APP_PASSWORD ? `SET (${process.env.WORDPRESS_APP_PASSWORD.length} chars)` : 'MISSING')
+  console.log('====================')
+
   const body = await request.json()
   const { title, content, targetKeyword, imageUrl, slug, status, scheduledDate, wordpressTags } = body
 
