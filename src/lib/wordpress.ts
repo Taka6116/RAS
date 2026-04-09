@@ -909,9 +909,10 @@ export async function postToWordPress(
     throw new Error(`WordPressの環境変数が設定されていません: ${missing.join(', ')}`);
   }
 
-  const rawCategoryId = process.env.WORDPRESS_CATEGORY_ID?.trim() || '115';
+  const rawCategoryId = process.env.WORDPRESS_CATEGORY_ID?.trim() || '65';
   const categoryId = parseInt(rawCategoryId, 10);
-  const safeCategoryId = Number.isNaN(categoryId) || categoryId < 1 ? 115 : categoryId;
+  const safeCategoryId = Number.isNaN(categoryId) || categoryId < 1 ? 65 : categoryId;
+  const taxonomyField = process.env.WORDPRESS_TAXONOMY_FIELD?.trim() || 'column-cat';
 
   // Basic認証のトークンを生成
   const credentials = Buffer.from(`${username}:${appPassword}`).toString('base64');
@@ -947,7 +948,8 @@ export async function postToWordPress(
     tagIds = await resolveWordPressTagIds(tagNames, credentials, wpUrl);
   }
 
-  const requestUrl = `${wpUrl}/wp-json/wp/v2/posts`;
+  const postType = process.env.WORDPRESS_POST_TYPE?.trim() || 'column';
+  const requestUrl = `${wpUrl}/wp-json/wp/v2/${postType}`;
   const authHeaderValue = `Basic ***`; // ログ用（パスワードは出さない）
 
   try {
@@ -965,7 +967,7 @@ export async function postToWordPress(
         slug: canonicalSlug,
         ...(mediaId ? { featured_media: mediaId } : {}),
         ...(status === 'future' && options?.scheduledDate ? { date: options.scheduledDate } : {}),
-        categories: [safeCategoryId],
+        [taxonomyField]: [safeCategoryId],
         ...(tagIds && tagIds.length > 0 ? { tags: tagIds } : {}),
       }),
     });
