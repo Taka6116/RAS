@@ -3,15 +3,19 @@ import {
   InvokeModelCommand,
 } from '@aws-sdk/client-bedrock-runtime'
 
-/** Stable Diffusion 3.5 は us-west-2 でのみ利用可能 */
-const BEDROCK_IMAGE_REGION = 'us-west-2'
+/**
+ * Stable Diffusion 3.5 は us-west-2 でのみ利用可能。
+ * BEDROCK_REGION（Claudeフォールバック用）とは別物。混在させるとモデル未検出になるため
+ * 画像生成は必ず us-west-2 を使う（任意で BEDROCK_IMAGE_REGION で上書き可）。
+ */
+const BEDROCK_IMAGE_REGION = (process.env.BEDROCK_IMAGE_REGION || 'us-west-2').trim()
 
 function getBedrockClient(): BedrockRuntimeClient {
   return new BedrockRuntimeClient({
-    region: process.env.BEDROCK_REGION ?? BEDROCK_IMAGE_REGION,
+    region: BEDROCK_IMAGE_REGION,
     credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!.trim(),
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!.trim(),
     },
   })
 }
@@ -81,12 +85,15 @@ export async function generateImageWithFirefly(
     console.error('Bedrock Stable Diffusion error:', error)
     let message = 'Stable Diffusion による画像生成に失敗しました'
     if (error instanceof Error) {
-      message =
-        error.name === 'AccessDeniedException'
-          ? 'Bedrock の利用権限がありません。IAM に bedrock:InvokeModel を追加してください。'
-          : error.name === 'ResourceNotFoundException'
-            ? '指定したモデルが見つかりません。BEDROCK_REGION=us-west-2 を確認してください。'
-            : error.message
+      if (error.name === 'AccessDeniedException') {
+        message = `Bedrock の利用権限がありません。IAM に bedrock:InvokeModel（${BEDROCK_IMAGE_REGION} の stability.sd3-5-large-v1:0）を追加してください。`
+      } else if (error.name === 'ResourceNotFoundException') {
+        message = `指定したモデルが見つかりません。${BEDROCK_IMAGE_REGION} でモデルアクセスを有効にしてください。`
+      } else if (error.name === 'ValidationException' || /model identifier is invalid/i.test(error.message)) {
+        message = `指定したモデル（stability.sd3-5-large-v1:0）が現在のリージョン（${BEDROCK_IMAGE_REGION}）に存在しません。BEDROCK_IMAGE_REGION=us-west-2 を確認してください（BEDROCK_REGION とは別物です）。`
+      } else {
+        message = error.message
+      }
     }
     throw new Error(message)
   }

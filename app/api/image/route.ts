@@ -5,8 +5,12 @@ import {
 } from '@aws-sdk/client-bedrock-runtime'
 import { generateImagePromptFromArticle } from '@/lib/api/gemini'
 
-/** Stable Diffusion 3.5 は us-west-2 でのみ利用可能 */
-const BEDROCK_IMAGE_REGION = 'us-west-2'
+/**
+ * Stable Diffusion 3.5 は us-west-2 でのみ利用可能。
+ * BEDROCK_REGION（Claudeフォールバック用）とは別物。混在させるとモデル未検出になるため
+ * 画像生成は必ず us-west-2 を使う（任意で BEDROCK_IMAGE_REGION で上書き可）。
+ */
+const BEDROCK_IMAGE_REGION = (process.env.BEDROCK_IMAGE_REGION || 'us-west-2').trim()
 
 function pickRandom<T>(items: readonly T[]): T {
   return items[Math.floor(Math.random() * items.length)]!
@@ -37,10 +41,10 @@ const ARCH_MEETING_WIDE = [
 
 function getBedrockClient(): BedrockRuntimeClient {
   return new BedrockRuntimeClient({
-    region: process.env.BEDROCK_REGION ?? BEDROCK_IMAGE_REGION,
+    region: BEDROCK_IMAGE_REGION,
     credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!.trim(),
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!.trim(),
     },
   })
 }
@@ -166,9 +170,11 @@ export async function POST(request: NextRequest) {
     const errName = err?.name ?? (error as Record<string, unknown>)?.Code ?? ''
     const errMessage = err?.message ?? String(error)
     if (errName === 'AccessDeniedException') {
-      message = 'Bedrock の利用権限がありません。IAM に bedrock:InvokeModel を追加してください。'
+      message = `Bedrock の利用権限がありません。IAM に bedrock:InvokeModel（${BEDROCK_IMAGE_REGION} の stability.sd3-5-large-v1:0）を追加してください。`
     } else if (errName === 'ResourceNotFoundException') {
-      message = '指定したモデル（stability.sd3-5-large-v1:0）が見つかりません。us-west-2 でモデルアクセスを有効にしてください。'
+      message = `指定したモデル（stability.sd3-5-large-v1:0）が見つかりません。${BEDROCK_IMAGE_REGION} でモデルアクセスを有効にしてください。`
+    } else if (errName === 'ValidationException' || /model identifier is invalid/i.test(errMessage)) {
+      message = `指定したモデル（stability.sd3-5-large-v1:0）が現在のリージョン（${BEDROCK_IMAGE_REGION}）に存在しません。BEDROCK_IMAGE_REGION=us-west-2 を確認してください（BEDROCK_REGION とは別物です）。`
     } else if (errMessage) {
       message = errMessage
     }
