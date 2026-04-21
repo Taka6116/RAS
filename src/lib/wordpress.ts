@@ -22,6 +22,47 @@ import { getSupervisorBlockHtml } from './supervisorBlock'
 import { resolveCanonicalPostSlug } from './slugNormalize'
 import { normalizeWordPressTagsFromRequest } from './wordpressTags'
 import { decodeHtmlEntities } from './wpTagList'
+import { getSiteSettings, DEFAULT_SITE_SETTINGS, type SiteSettings } from './siteSettings'
+
+/** HTML 属性用のエスケープ */
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** 正規表現用にエスケープ */
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * site settings の監修者設定から監修者ブロックを生成する。
+ * 未設定・無効化の場合は空文字（従来の空ブロック動作を維持）。
+ */
+function buildSupervisorBlockFromSettings(settings?: SiteSettings): string {
+  const sv = settings?.content.supervisor ?? DEFAULT_SITE_SETTINGS.content.supervisor;
+  if (!sv.enabled) {
+    // 後方互換: 環境変数ベースのURLから従来HTMLを使う経路を残す
+    const supervisorImageUrl = getSupervisorImageUrlForWordPress();
+    return getSupervisorBlockHtml(supervisorImageUrl);
+  }
+  const name = escapeAttr(sv.name || '');
+  const title = escapeAttr(sv.title || '');
+  const imageUrl = escapeAttr(sv.imageUrl || '');
+  const description = (sv.description || '').replace(/\n/g, '<br>');
+  const img = imageUrl
+    ? `<img src="${imageUrl}" alt="${name}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;flex-shrink:0;" />`
+    : '';
+  return `
+<div style="display:flex;gap:16px;align-items:flex-start;margin:24px 0 32px;padding:16px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;">
+${img}
+  <div style="flex:1;min-width:0;">
+    <div style="font-size:12px;color:#64748B;margin-bottom:4px;">監修者</div>
+    <div style="font-size:16px;font-weight:700;color:#0A2540;">${name}</div>
+    ${title ? `<div style="font-size:13px;color:#475569;margin-top:2px;">${title}</div>` : ''}
+    ${description ? `<p style="font-size:13px;color:#334155;line-height:1.7;margin:8px 0 0;">${description}</p>` : ''}
+  </div>
+</div>`.trim();
+}
 
 /** 監修者画像のデフォルト（WordPressメディアライブラリ・左の丸画像用） */
 const DEFAULT_SUPERVISOR_IMAGE_URL = ''
@@ -69,21 +110,32 @@ function getCtaBannerImageUrl(): string {
 }
 
 /**
- * CTAバナーのHTMLブロックを生成
- * クリックで https://nihon-teikei.co.jp/contact/ に遷移する
+ * CTAバナーのHTMLブロックを生成。
+ * site settings が渡されていればそれを優先し、未指定なら環境変数＋デフォルト値にフォールバック。
  */
-function buildCtaBannerHtml(): string {
-  const imageUrl = getCtaBannerImageUrl();
-  if (!imageUrl) {
-    return `<div style="text-align:center;margin:40px 0;padding:20px;background:#E6F5FC;border-radius:12px;">
-  <p style="font-size:18px;font-weight:700;color:#0A2540;margin:0 0 12px;">ERP導入・業務改善のご相談はお気軽に</p>
-  <a href="https://www.rice-cloud.info/contact/" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 32px;background:#009AE0;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;">お問い合わせはこちら</a>
+function buildCtaBannerHtml(settings?: SiteSettings): string {
+  // 完全カスタムHTML が指定されている場合はそれを最優先
+  if (settings?.cta.advancedHtml?.trim()) {
+    return settings.cta.advancedHtml;
+  }
+
+  const cta = settings?.cta ?? DEFAULT_SITE_SETTINGS.cta;
+  const brand = settings?.brand ?? DEFAULT_SITE_SETTINGS.brand;
+  const productName = brand.productName;
+
+  // 画像版: settings > 環境変数
+  const imageUrl = cta.bannerImageUrl || getCtaBannerImageUrl();
+  if (imageUrl) {
+    return `<div style="text-align:center;margin:40px 0;padding:0;">
+  <a href="${escapeAttr(cta.inquiryUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;text-decoration:none;">
+    <img src="${escapeAttr(imageUrl)}" alt="${escapeAttr(cta.bannerHeadline)} — ${escapeAttr(productName)}" style="max-width:100%;width:700px;height:auto;border:none;border-radius:8px;" loading="lazy" />
+  </a>
 </div>`;
   }
-  return `<div style="text-align:center;margin:40px 0;padding:0;">
-  <a href="https://www.rice-cloud.info/contact/" target="_blank" rel="noopener noreferrer" style="display:inline-block;text-decoration:none;">
-    <img src="${imageUrl}" alt="ERP導入のプロに無料で相談 — RICE CLOUD" style="max-width:100%;width:700px;height:auto;border:none;border-radius:8px;" loading="lazy" />
-  </a>
+
+  return `<div style="text-align:center;margin:40px 0;padding:20px;background:#E6F5FC;border-radius:12px;">
+  <p style="font-size:18px;font-weight:700;color:#0A2540;margin:0 0 12px;">${escapeAttr(cta.bannerHeadline)}</p>
+  <a href="${escapeAttr(cta.inquiryUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 32px;background:${escapeAttr(brand.primaryColor)};color:#fff;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;">${escapeAttr(cta.inquiryLabel)}</a>
 </div>`;
 }
 
@@ -99,8 +151,8 @@ function buildCtaBannerHtml(): string {
  * @param htmlBody convertToHtml + linkifyCtaUrls 適用済みの本文HTML
  * @returns CTAバナーが挿入された本文HTML
  */
-function insertCtaBannerIntoBody(htmlBody: string): string {
-  const ctaBannerHtml = buildCtaBannerHtml();
+function insertCtaBannerIntoBody(htmlBody: string, settings?: SiteSettings): string {
+  const ctaBannerHtml = buildCtaBannerHtml(settings);
 
   // 優先: 「まとめ」を含む h2 タグの直前に挿入
   const matomeRegex = /<h2[^>]*>[^<]*まとめ[^<]*<\/h2>/gi;
@@ -129,6 +181,39 @@ function insertCtaBannerIntoBody(htmlBody: string): string {
   }
 
   return htmlBody + '\n' + ctaBannerHtml;
+}
+
+/** L3: extraCtaBlocks を本文に挿入する */
+function insertExtraCtaBlocks(htmlBody: string, settings?: SiteSettings): string {
+  const blocks = settings?.extraCtaBlocks ?? [];
+  if (blocks.length === 0) return htmlBody;
+  let out = htmlBody;
+  for (const block of blocks) {
+    if (!block.html?.trim()) continue;
+    const insertable = `\n${block.html}\n`;
+    if (block.insertBefore === 'h2-matome') {
+      const r = /<h2[^>]*>[^<]*まとめ[^<]*<\/h2>/i;
+      const m = r.exec(out);
+      if (m) {
+        out = out.slice(0, m.index) + insertable + out.slice(m.index);
+        continue;
+      }
+    }
+    if (block.insertBefore === 'last-h2') {
+      const r = /<h2[\s>]/gi;
+      const positions: number[] = [];
+      let mm: RegExpExecArray | null;
+      while ((mm = r.exec(out)) !== null) positions.push(mm.index);
+      if (positions.length > 0) {
+        const pos = positions[positions.length - 1]!;
+        out = out.slice(0, pos) + insertable + out.slice(pos);
+        continue;
+      }
+    }
+    // 'none' または挿入位置が見つからない場合は末尾へ
+    out = out + insertable;
+  }
+  return out;
 }
 
 /** メディアアップロード結果（アイキャッチ設定と本文挿入用URL） */
@@ -285,7 +370,10 @@ function fixStrongParagraphNesting(html: string): string {
  * - **テキスト** → <strong>、__テキスト__ → 下線
  * - 「・ラベル: 説明」のラベルを太字に
  */
-export function convertToHtml(content: string): string {
+export function convertToHtml(content: string, settings?: SiteSettings): string {
+  const H2 = settings?.styles.h2Css || H2_STYLE;
+  const H3 = settings?.styles.h3Css || H3_STYLE;
+  const P = settings?.styles.bodyCss || P_STYLE;
   const lines = content.split('\n');
   const htmlLines: string[] = [];
   let currentParagraph: string[] = [];
@@ -323,7 +411,7 @@ export function convertToHtml(content: string): string {
           if (isBlockElement) {
             htmlLines.push(text);
           } else {
-            htmlLines.push(`<p style="${P_STYLE}">${text}</p>`);
+            htmlLines.push(`<p style="${P}">${text}</p>`);
           }
         }
       }
@@ -346,7 +434,7 @@ export function convertToHtml(content: string): string {
       h2Count++;
       h3Count = 0;
       const h2Plain = normalizeStandaloneH2PlainText(trimmed);
-      htmlLines.push(`<h2 id="section-${h2Count}" style="${H2_STYLE}">${applyInlineFormatting(h2Plain)}</h2>`);
+      htmlLines.push(`<h2 id="section-${h2Count}" style="${H2}">${applyInlineFormatting(h2Plain)}</h2>`);
       continue;
     }
 
@@ -356,7 +444,7 @@ export function convertToHtml(content: string): string {
       h2Count++;
       h3Count = 0;
       const text = trimmed.replace(/^\d+[．.]\s*/, '');
-      htmlLines.push(`<h2 id="section-${h2Count}" style="${H2_STYLE}">${applyInlineFormatting(text)}</h2>`);
+      htmlLines.push(`<h2 id="section-${h2Count}" style="${H2}">${applyInlineFormatting(text)}</h2>`);
       continue;
     }
 
@@ -367,7 +455,7 @@ export function convertToHtml(content: string): string {
         .replace(/^\d+-\d+[．.]\s*/, '')
         .replace(/\*\*(.+?)\*\*/g, '$1')
         .replace(/\*\*/g, '');
-      htmlLines.push(`<h3 id="section-${h2Count}-${h3Count}" style="${H3_STYLE}">${text}</h3>`);
+      htmlLines.push(`<h3 id="section-${h2Count}-${h3Count}" style="${H3}">${text}</h3>`);
       continue;
     }
 
@@ -378,7 +466,7 @@ export function convertToHtml(content: string): string {
         .replace(/^[■▶◆●▼]\s*/, '')
         .replace(/\*\*(.+?)\*\*/g, '$1')
         .replace(/\*\*/g, '');
-      htmlLines.push(`<h3 id="section-${h2Count}-${h3Count}" style="${H3_STYLE}">${text}</h3>`);
+      htmlLines.push(`<h3 id="section-${h2Count}-${h3Count}" style="${H3}">${text}</h3>`);
       continue;
     }
 
@@ -514,8 +602,10 @@ function buildSchemaAboutName(payload: WordPressPostPayload): string {
 function buildArticleSchema(
   payload: WordPressPostPayload,
   slug: string,
-  options?: { bodyTopImageUrl?: string; scheduledDate?: string }
+  options?: { bodyTopImageUrl?: string; scheduledDate?: string; settings?: SiteSettings }
 ): string {
+  const brand = options?.settings?.brand ?? DEFAULT_SITE_SETTINGS.brand;
+  const siteUrl = brand.siteUrl.replace(/\/$/, '');
   // Schema用の画像URL決定ロジック
   // 1. WordPressメディアにアップロード済みのURL（bodyTopImageUrl）があれば最優先
   // 2. payload.imageUrl が data: で始まらない通常のURLならそれを使用
@@ -545,22 +635,22 @@ function buildArticleSchema(
     'author': [
       {
         '@type': 'Organization',
-        'name': '株式会社RICE CLOUD',
-        'url': 'https://www.rice-cloud.info',
+        'name': brand.companyName,
+        'url': siteUrl,
       },
     ],
     'publisher': {
       '@type': 'Organization',
-      'name': '株式会社RICE CLOUD',
-      'url': 'https://www.rice-cloud.info',
+      'name': brand.companyName,
+      'url': siteUrl,
       'logo': {
         '@type': 'ImageObject',
-        'url': 'https://www.rice-cloud.info/wp-content/themes/webinus-template/assets/images/logo.png',
+        'url': brand.logoUrl.startsWith('http') ? brand.logoUrl : `${siteUrl}${brand.logoUrl}`,
       },
     },
     'mainEntityOfPage': {
       '@type': 'WebPage',
-      '@id': `https://www.rice-cloud.info/column/${slug}/`,
+      '@id': `${siteUrl}/column/${slug}/`,
     },
     'about': {
       '@type': 'Thing',
@@ -705,16 +795,39 @@ function generateExcerpt(content: string): string {
 }
 
 /** 本文HTML内の末尾CTAをハイパーリンクに変換（WordPress投稿でクリック可能にする） */
-function linkifyCtaUrls(html: string): string {
-  return html
+function linkifyCtaUrls(html: string, settings?: SiteSettings): string {
+  const cta = settings?.cta ?? DEFAULT_SITE_SETTINGS.cta;
+  let out = html;
+
+  // 設定値に基づく動的パターン（URL表記をリンク化）
+  if (cta.caseStudyUrl && cta.caseStudyLabel) {
+    const labelRe = escapeRegex(cta.caseStudyLabel);
+    const urlRe = escapeRegex(cta.caseStudyUrl.replace(/\/$/, ''));
+    out = out.replace(
+      new RegExp(`${labelRe}\\s+https?:\\/\\/[^\\s<]*${urlRe.split('://')[1] ?? ''}\\/?`, 'g'),
+      `<a href="${escapeAttr(cta.caseStudyUrl)}">${escapeAttr(cta.caseStudyLabel)}</a>`
+    );
+  }
+  if (cta.inquiryUrl && cta.inquiryLabel) {
+    const labelRe = escapeRegex(cta.inquiryLabel);
+    const urlRe = escapeRegex(cta.inquiryUrl.replace(/\/$/, ''));
+    out = out.replace(
+      new RegExp(`${labelRe}\\s+https?:\\/\\/[^\\s<]*${urlRe.split('://')[1] ?? ''}\\/?`, 'g'),
+      `<a href="${escapeAttr(cta.inquiryUrl)}">${escapeAttr(cta.inquiryLabel)}</a>`
+    );
+  }
+
+  // 後方互換: 旧RICE CLOUD URLもリンク化（デフォルト値と一致しなくなった場合のフォールバック）
+  out = out
     .replace(
       /導入事例はこちらから\s+https?:\/\/www\.rice-cloud\.info\/casestudy\/?/g,
-      '<a href="https://www.rice-cloud.info/casestudy/">導入事例はこちらから</a>'
+      `<a href="${escapeAttr(cta.caseStudyUrl || 'https://www.rice-cloud.info/casestudy/')}">${escapeAttr(cta.caseStudyLabel || '導入事例はこちらから')}</a>`
     )
     .replace(
       /お問い合わせはこちら\s+https?:\/\/www\.rice-cloud\.info\/contact\/?/g,
-      '<a href="https://www.rice-cloud.info/contact/">お問い合わせはこちら</a>'
+      `<a href="${escapeAttr(cta.inquiryUrl || 'https://www.rice-cloud.info/contact/')}">${escapeAttr(cta.inquiryLabel || 'お問い合わせはこちら')}</a>`
     );
+  return out;
 }
 
 /**
@@ -757,8 +870,10 @@ function stripTextFaqFromHtml(html: string): string {
  */
 export function buildPostContent(
   payload: WordPressPostPayload,
-  options?: { bodyTopImageUrl?: string; scheduledDate?: string }
+  options?: { bodyTopImageUrl?: string; scheduledDate?: string; settings?: SiteSettings }
 ): string {
+  const settings = options?.settings;
+  const brand = settings?.brand ?? DEFAULT_SITE_SETTINGS.brand;
   const slug = resolveCanonicalPostSlug(payload.slug);
 
   // 0. 本文から先頭の監修者テキストを除去（画像付きブロックのみ表示するため）
@@ -768,25 +883,27 @@ export function buildPostContent(
   const { body: bodyText, faqSection } = splitFaqSection(contentWithoutSupervisorText);
 
   // 1. 本文（FAQ除外）をHTMLに変換
-  let htmlBody = convertToHtml(bodyText);
-  htmlBody = linkifyCtaUrls(htmlBody);
+  let htmlBody = convertToHtml(bodyText, settings);
+  htmlBody = linkifyCtaUrls(htmlBody, settings);
 
   // 1-0. CTAバナーを本文中盤に挿入
-  htmlBody = insertCtaBannerIntoBody(htmlBody);
+  htmlBody = insertCtaBannerIntoBody(htmlBody, settings);
 
   // 1-0a. テキスト版FAQ（「よくある質問」H2以降のQ/Aテキスト）を除去（アコーディオンで置換するため）
   htmlBody = stripTextFaqFromHtml(htmlBody);
+
+  // 1-0b. L3: 追加CTAブロックを挿入
+  htmlBody = insertExtraCtaBlocks(htmlBody, settings);
 
   // 1-1. 本文最上部：記事画像（プレビューと同じスタイル）
   const escapedTitle = payload.title.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const bodyTopImageBlock =
     options?.bodyTopImageUrl
-      ? `<img src="${options.bodyTopImageUrl}" style="width:100%;height:auto;margin-bottom:32px;display:block;" alt="${escapedTitle} — 株式会社RICE CLOUD" />`
+      ? `<img src="${options.bodyTopImageUrl}" style="width:100%;height:auto;margin-bottom:32px;display:block;" alt="${escapedTitle} — ${escapeAttr(brand.companyName)}" />`
       : '';
 
-  // 1-2. 監修者ブロック（プレビューと同一HTML＝supervisorBlock.tsで単一ソース化）
-  const supervisorImageUrl = getSupervisorImageUrlForWordPress();
-  const supervisorBlock = getSupervisorBlockHtml(supervisorImageUrl);
+  // 1-2. 監修者ブロック
+  const supervisorBlock = buildSupervisorBlockFromSettings(settings);
 
   const fullBody = [bodyTopImageBlock, supervisorBlock, htmlBody].filter(Boolean).join('');
 
@@ -808,7 +925,7 @@ export function buildPostContent(
   const faqAccordionHtml = buildFaqAccordionHtml(faqs);
 
   // 3. Schema生成（投稿には必ず含める）
-  const articleSchema = buildArticleSchema(payload, slug, { bodyTopImageUrl: options?.bodyTopImageUrl, scheduledDate: options?.scheduledDate });
+  const articleSchema = buildArticleSchema(payload, slug, { bodyTopImageUrl: options?.bodyTopImageUrl, scheduledDate: options?.scheduledDate, settings });
   const faqSchema = buildFaqSchema(faqs);
   if (process.env.NODE_ENV === 'development' && faqs.length > 0) {
     console.log(`[FAQ] Schema generated: ${faqSchema ? 'yes' : 'no'}`);
@@ -936,10 +1053,18 @@ export async function postToWordPress(
     }
   }
 
+  // サイト設定をS3から取得（失敗時はデフォルト値）
+  let siteSettings: SiteSettings;
+  try {
+    siteSettings = await getSiteSettings();
+  } catch {
+    siteSettings = DEFAULT_SITE_SETTINGS;
+  }
+
   // 投稿コンテンツ構築（本文最上部に記事画像 → 監修者ブロック → 本文）
   const canonicalSlug = resolveCanonicalPostSlug(payload.slug);
   const payloadWithSlug: WordPressPostPayload = { ...payload, slug: canonicalSlug };
-  const postContent = buildPostContent(payloadWithSlug, { bodyTopImageUrl, scheduledDate: options?.scheduledDate });
+  const postContent = buildPostContent(payloadWithSlug, { bodyTopImageUrl, scheduledDate: options?.scheduledDate, settings: siteSettings });
   const excerpt = generateExcerpt(payload.content);
 
   const tagNames = normalizeWordPressTagsFromRequest(payload.wordpressTags ?? []);

@@ -4,32 +4,31 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { useCallback, useMemo, useState, useEffect, Suspense } from 'react'
 import StepIndicator from '@/components/editor/StepIndicator'
 import type { Step } from '@/lib/types'
-import { getSupervisorBlockHtml } from '@/lib/supervisorBlock'
+import { DEFAULT_SITE_SETTINGS, type SiteSettings, type ExtraCtaBlock } from '@/lib/siteSettings'
 
-const DUMMY_ARTICLES = [
-  {
-    date: '2024.11.15',
-    category: 'ERPの基礎',
-    title: 'ERP導入で失敗しないために！ERPシステムを比較する5つのポイント',
-  },
-  {
-    date: '2024.06.28',
-    category: 'ERPの基礎',
-    title: 'ズバリ解説！ERPとは何か、今多くの企業が注目するワケ',
-  },
-]
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
 
-const SUPERVISOR_FACE_IMAGE_URL = ''
-
-function getPreviewCtaBannerHtml(): string {
+function buildPreviewCtaBannerHtml(settings: SiteSettings): string {
+  if (settings.cta.advancedHtml?.trim()) return settings.cta.advancedHtml
+  const cta = settings.cta
+  const imageUrl = cta.bannerImageUrl
+  if (imageUrl) {
+    return `<div style="text-align:center;margin:40px 0;padding:0;">
+  <a href="${escapeAttr(cta.inquiryUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;text-decoration:none;">
+    <img src="${escapeAttr(imageUrl)}" alt="${escapeAttr(cta.bannerHeadline)}" style="max-width:100%;width:700px;height:auto;border:none;border-radius:8px;" loading="lazy" />
+  </a>
+</div>`
+  }
   return `<div style="text-align:center;margin:40px 0;padding:20px;background:#E6F5FC;border-radius:12px;">
-  <p style="font-size:18px;font-weight:700;color:#0A2540;margin:0 0 12px;">ERP導入・業務改善のご相談はお気軽に</p>
-  <a href="https://www.rice-cloud.info/contact/" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 32px;background:#3EA8D8;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;">お問い合わせはこちら</a>
+  <p style="font-size:18px;font-weight:700;color:#0A2540;margin:0 0 12px;">${escapeAttr(cta.bannerHeadline)}</p>
+  <a href="${escapeAttr(cta.inquiryUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 32px;background:${escapeAttr(settings.brand.accentColor)};color:#fff;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;">${escapeAttr(cta.inquiryLabel)}</a>
 </div>`
 }
 
-function insertCtaBannersForPreview(html: string): string {
-  const cta = getPreviewCtaBannerHtml()
+function insertCtaBannersForPreview(html: string, settings: SiteSettings): string {
+  const cta = buildPreviewCtaBannerHtml(settings)
 
   const matomeRegex = /<h2[^>]*>[^<]*まとめ[^<]*<\/h2>/gi
   const matomeMatch = matomeRegex.exec(html)
@@ -57,12 +56,64 @@ function insertCtaBannersForPreview(html: string): string {
   return html + '\n' + cta
 }
 
-function formatContent(content: string): string {
-  const supervisorBlock = getSupervisorBlockHtml(SUPERVISOR_FACE_IMAGE_URL)
+function insertExtraCtaBlocksPreview(html: string, blocks: ExtraCtaBlock[]): string {
+  if (!blocks || blocks.length === 0) return html
+  let out = html
+  for (const block of blocks) {
+    if (!block.html?.trim()) continue
+    const insertable = `\n${block.html}\n`
+    if (block.insertBefore === 'h2-matome') {
+      const r = /<h2[^>]*>[^<]*まとめ[^<]*<\/h2>/i
+      const m = r.exec(out)
+      if (m) {
+        out = out.slice(0, m.index) + insertable + out.slice(m.index)
+        continue
+      }
+    }
+    if (block.insertBefore === 'last-h2') {
+      const r = /<h2[\s>]/gi
+      const positions: number[] = []
+      let mm: RegExpExecArray | null
+      while ((mm = r.exec(out)) !== null) positions.push(mm.index)
+      if (positions.length > 0) {
+        const pos = positions[positions.length - 1]!
+        out = out.slice(0, pos) + insertable + out.slice(pos)
+        continue
+      }
+    }
+    out = out + insertable
+  }
+  return out
+}
 
-  const H2_STYLE = "font-size:20px;font-weight:700;margin:48px 0 16px;padding:14px 20px;background:#1a2744;color:#fff;border-radius:4px;font-family:'Noto Sans JP',sans-serif;"
-  const H3_STYLE = 'font-size:18px;font-weight:400;margin:32px 0 12px;color:#111;'
-  const P_STYLE = 'margin-bottom:1.6em;'
+function buildSupervisorBlockPreview(settings: SiteSettings): string {
+  const sv = settings.content.supervisor
+  if (!sv.enabled) return ''
+  const name = escapeAttr(sv.name || '')
+  const title = escapeAttr(sv.title || '')
+  const imageUrl = escapeAttr(sv.imageUrl || '')
+  const description = (sv.description || '').replace(/\n/g, '<br>')
+  const img = imageUrl
+    ? `<img src="${imageUrl}" alt="${name}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;flex-shrink:0;" />`
+    : ''
+  return `
+<div style="display:flex;gap:16px;align-items:flex-start;margin:24px 0 32px;padding:16px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;">
+${img}
+  <div style="flex:1;min-width:0;">
+    <div style="font-size:12px;color:#64748B;margin-bottom:4px;">監修者</div>
+    <div style="font-size:16px;font-weight:700;color:#0A2540;">${name}</div>
+    ${title ? `<div style="font-size:13px;color:#475569;margin-top:2px;">${title}</div>` : ''}
+    ${description ? `<p style="font-size:13px;color:#334155;line-height:1.7;margin:8px 0 0;">${description}</p>` : ''}
+  </div>
+</div>`.trim()
+}
+
+function formatContent(content: string, settings: SiteSettings): string {
+  const supervisorBlock = buildSupervisorBlockPreview(settings)
+
+  const H2_STYLE = settings.styles.h2Css || DEFAULT_SITE_SETTINGS.styles.h2Css
+  const H3_STYLE = settings.styles.h3Css || DEFAULT_SITE_SETTINGS.styles.h3Css
+  const P_STYLE = settings.styles.bodyCss || DEFAULT_SITE_SETTINGS.styles.bodyCss
 
   const applyInlineFormatting = (text: string): string =>
     text
@@ -116,17 +167,19 @@ function formatContent(content: string): string {
   flushParagraph()
   let bodyHtml = htmlLines.join('\n')
 
+  const accent = settings.brand.accentColor
   bodyHtml = bodyHtml
     .replace(
-      /導入事例はこちらから\s+https?:\/\/www\.rice-cloud\.info\/casestudy\/?/g,
-      '<a href="https://www.rice-cloud.info/casestudy/" target="_blank" rel="noopener noreferrer" style="color:#3EA8D8;text-decoration:underline;">導入事例はこちらから</a>'
+      /導入事例はこちらから\s+https?:\/\/[^\s<]+/g,
+      `<a href="${escapeAttr(settings.cta.caseStudyUrl)}" target="_blank" rel="noopener noreferrer" style="color:${escapeAttr(accent)};text-decoration:underline;">${escapeAttr(settings.cta.caseStudyLabel)}</a>`
     )
     .replace(
-      /お問い合わせはこちら\s+https?:\/\/www\.rice-cloud\.info\/contact\/?/g,
-      '<a href="https://www.rice-cloud.info/contact/" target="_blank" rel="noopener noreferrer" style="color:#3EA8D8;text-decoration:underline;">お問い合わせはこちら</a>'
+      /お問い合わせはこちら\s+https?:\/\/[^\s<]+/g,
+      `<a href="${escapeAttr(settings.cta.inquiryUrl)}" target="_blank" rel="noopener noreferrer" style="color:${escapeAttr(accent)};text-decoration:underline;">${escapeAttr(settings.cta.inquiryLabel)}</a>`
     )
 
-  bodyHtml = insertCtaBannersForPreview(bodyHtml)
+  bodyHtml = insertCtaBannersForPreview(bodyHtml, settings)
+  bodyHtml = insertExtraCtaBlocksPreview(bodyHtml, settings.extraCtaBlocks)
 
   return supervisorBlock + bodyHtml
 }
@@ -234,8 +287,20 @@ function PreviewContent() {
   const [imageUrl, setImageUrl] = useState('')
   const [wordpressUrl, setWordpressUrl] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
+  const [settings, setSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS)
 
   const isPublishedPreview = searchParams.get('source') === 'published'
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/site-settings', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(data => {
+        if (!cancelled && data?.settings) setSettings(data.settings)
+      })
+      .catch(() => { /* デフォルト値のまま */ })
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -280,8 +345,8 @@ function PreviewContent() {
   const articleId = searchParams.get('articleId') || ''
 
   const formattedContent = useMemo(
-    () => formatContent(content),
-    [content]
+    () => formatContent(content, settings),
+    [content, settings]
   )
 
   const handlePublish = useCallback(() => {
@@ -432,10 +497,10 @@ function PreviewContent() {
       <div style={{ paddingTop: 56, display: 'flex', gap: 24, alignItems: 'flex-start' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
 
-      {/* ヘッダー（RICE CLOUDサイト再現 — ダークネイビー背景） */}
+      {/* ヘッダー */}
       <header
         style={{
-          backgroundColor: '#1a2744',
+          backgroundColor: settings.brand.headerBgColor,
           padding: '0 24px',
           minHeight: 64,
           display: 'flex',
@@ -451,8 +516,8 @@ function PreviewContent() {
         <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/logo-w.webp"
-            alt="株式会社ライスクラウド"
+            src={settings.brand.logoUrl}
+            alt={settings.brand.companyName}
             style={{ height: 40, width: 'auto', display: 'block', filter: 'brightness(10)' }}
           />
         </div>
@@ -469,26 +534,20 @@ function PreviewContent() {
             fontFamily: '"Noto Sans JP", sans-serif',
           }}
         >
-          {[
-            'TOP',
-            '会社案内',
-            '導入事例',
-            'サービス',
-            'お役立ち情報',
-            'NEWS',
-            '採用情報',
-          ].map(item => (
-            <span key={item} style={{ cursor: 'pointer' }}>
-              {item}
+          {settings.content.headerNav.map(item => (
+            <span key={item.label} style={{ cursor: 'pointer' }}>
+              {item.label}
             </span>
           ))}
         </nav>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-          <button
-            type="button"
+          <a
+            href={settings.cta.inquiryUrl}
+            target="_blank"
+            rel="noopener noreferrer"
             style={{
-              backgroundColor: '#2ecc71',
+              backgroundColor: settings.brand.inquiryButtonColor,
               color: 'white',
               padding: '10px 20px',
               borderRadius: 6,
@@ -496,17 +555,18 @@ function PreviewContent() {
               fontSize: 13,
               fontWeight: 600,
               cursor: 'pointer',
-              display: 'flex',
+              display: 'inline-flex',
               alignItems: 'center',
               gap: 6,
               whiteSpace: 'nowrap',
+              textDecoration: 'none',
             }}
           >
             お問い合わせ
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M5 12h14M12 5l7 7-7 7" />
             </svg>
-          </button>
+          </a>
         </div>
       </header>
 
@@ -529,7 +589,7 @@ function PreviewContent() {
                 fontFamily: '"Noto Sans JP", sans-serif',
               }}
             >
-              お役立ち情報詳細
+              {settings.content.columnSubLabel}
             </span>
             <span
               style={{
@@ -542,18 +602,18 @@ function PreviewContent() {
                 marginTop: 4,
               }}
             >
-              COLUMN
+              {settings.content.columnLabel}
             </span>
           </h1>
           <nav
             style={{ marginTop: 16, fontSize: 13, color: '#666', fontFamily: '"Noto Sans JP", sans-serif' }}
             aria-label="パンくず"
           >
-            <span style={{ color: '#3EA8D8', cursor: 'pointer' }}>トップ</span>
+            <span style={{ color: settings.brand.accentColor, cursor: 'pointer' }}>{settings.content.breadcrumbs.home}</span>
             {' > '}
-            <span style={{ color: '#3EA8D8', cursor: 'pointer' }}>お役立ち情報</span>
+            <span style={{ color: settings.brand.accentColor, cursor: 'pointer' }}>{settings.content.breadcrumbs.category}</span>
             {' > '}
-            <span style={{ color: '#3EA8D8', cursor: 'pointer' }}>ERPの基礎</span>
+            <span style={{ color: settings.brand.accentColor, cursor: 'pointer' }}>{settings.content.breadcrumbs.section}</span>
             {' > '}
             <span>
               {title.length > 40 ? `${title.slice(0, 40)}...` : title}
@@ -579,7 +639,7 @@ function PreviewContent() {
             <header style={{ marginBottom: 32 }}>
               {/* タグ → タイトル → 日付（実サイト順） */}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-                {['ERP', '業務改善', 'データ分析', 'SaaS', '基礎知識'].map(tag => (
+                {settings.content.articleTags.map(tag => (
                   <span
                     key={tag}
                     style={{
@@ -589,7 +649,7 @@ function PreviewContent() {
                       fontSize: 12,
                       fontWeight: 600,
                       color: 'white',
-                      backgroundColor: '#1a2744',
+                      backgroundColor: settings.brand.headerBgColor,
                     }}
                   >
                     {tag}
@@ -645,7 +705,7 @@ function PreviewContent() {
 
             {/* 記事末タグバッジ */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 48, paddingTop: 24, borderTop: '1px solid #e5e5e5' }}>
-              {['ERP', '業務改善', 'データ分析', 'SaaS', '基礎知識'].map(tag => (
+              {settings.content.articleTags.map(tag => (
                 <span
                   key={tag}
                   style={{
@@ -655,7 +715,7 @@ function PreviewContent() {
                     fontSize: 12,
                     fontWeight: 600,
                     color: 'white',
-                    backgroundColor: '#1a2744',
+                    backgroundColor: settings.brand.headerBgColor,
                     cursor: 'pointer',
                   }}
                 >
@@ -692,15 +752,19 @@ function PreviewContent() {
                 こんなお役立ち情報もあります
               </h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24 }}>
-                {DUMMY_ARTICLES.map((article, i) => (
-                  <div
+                {settings.content.relatedArticles.map((article, i) => (
+                  <a
                     key={i}
+                    href={article.href || '#'}
                     style={{
                       backgroundColor: 'white',
                       borderRadius: 4,
                       overflow: 'hidden',
                       border: '1px solid #e5e5e5',
                       cursor: 'pointer',
+                      textDecoration: 'none',
+                      color: 'inherit',
+                      display: 'block',
                     }}
                   >
                     <div
@@ -714,24 +778,36 @@ function PreviewContent() {
                         justifyContent: 'center',
                         padding: 24,
                         borderBottom: '1px solid #e5e5e5',
+                        backgroundImage: article.imageUrl ? `url(${article.imageUrl})` : undefined,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
                       }}
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src="/logo-w.webp"
-                        alt="RICE CLOUD"
-                        style={{ height: 28, width: 'auto', display: 'block', marginBottom: 4 }}
-                      />
-                      <span style={{ fontSize: 9, fontWeight: 600, color: '#3EA8D8', letterSpacing: '0.08em' }}>
-                        RICE CLOUD JAPAN
-                      </span>
+                      {!article.imageUrl && (
+                        <>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={settings.brand.logoUrl}
+                            alt={settings.brand.productName}
+                            style={{ height: 28, width: 'auto', display: 'block', marginBottom: 4 }}
+                          />
+                          <span style={{ fontSize: 9, fontWeight: 600, color: settings.brand.accentColor, letterSpacing: '0.08em' }}>
+                            {settings.brand.productName}
+                          </span>
+                        </>
+                      )}
                     </div>
                     <div style={{ padding: 16 }}>
-                      <p style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.6, color: '#111' }}>
+                      {article.date && (
+                        <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 4 }}>
+                          {article.date}{article.category ? ` / ${article.category}` : ''}
+                        </div>
+                      )}
+                      <p style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.6, color: '#111', margin: 0 }}>
                         {article.title}
                       </p>
                     </div>
-                  </div>
+                  </a>
                 ))}
               </div>
             </div>
@@ -741,21 +817,21 @@ function PreviewContent() {
           <div style={{ width: 260, flexShrink: 0, position: 'sticky', top: 130, fontFamily: '"Noto Sans JP", sans-serif' }}>
             {/* 絞り込み検索 */}
             <div style={{ marginBottom: 32, border: '1px solid #e0e0e0', borderRadius: 4, overflow: 'hidden' }}>
-              <div style={{ backgroundColor: '#1a2744', color: 'white', padding: '12px 16px', fontSize: 14, fontWeight: 700, textAlign: 'center' }}>
+              <div style={{ backgroundColor: settings.brand.headerBgColor, color: 'white', padding: '12px 16px', fontSize: 14, fontWeight: 700, textAlign: 'center' }}>
                 絞り込み検索
               </div>
               <div style={{ padding: 16 }}>
                 <select
                   style={{ width: '100%', padding: '8px 10px', fontSize: 13, border: '1px solid #ccc', borderRadius: 4, marginBottom: 16, color: '#333', background: 'white' }}
-                  defaultValue="column01"
+                  defaultValue=""
                 >
                   <option value="">カテゴリー</option>
-                  <option value="column01">ERPの基礎</option>
+                  <option value="section">{settings.content.breadcrumbs.section}</option>
                 </select>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#333', marginBottom: 8 }}>タグ検索</div>
-                {['ERP', '業務改善', 'データ分析', 'SaaS', '基礎知識'].map(tag => (
+                {settings.content.articleTags.map(tag => (
                   <label key={tag} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#333', marginBottom: 6, cursor: 'pointer' }}>
-                    <input type="checkbox" style={{ accentColor: '#1a2744' }} readOnly />
+                    <input type="checkbox" style={{ accentColor: settings.brand.headerBgColor }} readOnly />
                     {tag}
                   </label>
                 ))}
@@ -765,7 +841,7 @@ function PreviewContent() {
                     width: '100%',
                     marginTop: 12,
                     padding: '10px 0',
-                    backgroundColor: '#1a2744',
+                    backgroundColor: settings.brand.headerBgColor,
                     color: 'white',
                     border: 'none',
                     borderRadius: 4,
@@ -782,13 +858,7 @@ function PreviewContent() {
             <div>
               <div style={{ fontSize: 14, fontWeight: 700, color: '#333', marginBottom: 12 }}>タグ一覧</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {[
-                  { name: 'ERP', count: 3 },
-                  { name: '業務改善', count: 3 },
-                  { name: 'データ分析', count: 3 },
-                  { name: 'SaaS', count: 3 },
-                  { name: '基礎知識', count: 3 },
-                ].map(tag => (
+                {settings.content.tagList.map(tag => (
                   <span
                     key={tag.name}
                     style={{
@@ -798,7 +868,7 @@ function PreviewContent() {
                       fontSize: 12,
                       fontWeight: 600,
                       color: 'white',
-                      backgroundColor: '#1a2744',
+                      backgroundColor: settings.brand.headerBgColor,
                       cursor: 'pointer',
                     }}
                   >
@@ -814,7 +884,7 @@ function PreviewContent() {
       {/* フッター */}
       <footer
         style={{
-          backgroundColor: '#222',
+          backgroundColor: settings.brand.footerBgColor,
           color: 'white',
           padding: '48px 40px 24px',
           fontFamily: '"Noto Sans JP", sans-serif',
@@ -834,17 +904,15 @@ function PreviewContent() {
           <div>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/logo-w.webp"
-              alt="株式会社ライスクラウド"
+              src={settings.brand.logoUrl}
+              alt={settings.brand.companyName}
               style={{ height: 36, width: 'auto', display: 'block', marginBottom: 16, filter: 'brightness(10)' }}
             />
             <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>
-              株式会社 RICE CLOUD（ライスクラウド）
+              {settings.brand.companyName}
             </div>
-            <p style={{ fontSize: 13, opacity: 0.7, lineHeight: 1.8 }}>
-              〒336-0017
-              <br />
-              埼玉県さいたま市南区南浦和2丁目40-1 第２愛興ビル 3階
+            <p style={{ fontSize: 13, opacity: 0.7, lineHeight: 1.8, whiteSpace: 'pre-line' }}>
+              {settings.brand.address}
             </p>
           </div>
           <nav
@@ -857,7 +925,7 @@ function PreviewContent() {
               alignItems: 'flex-start',
             }}
           >
-            {['TOP', '会社案内', '導入事例', 'サービス', 'お役立ち情報', 'NEWS', '採用情報', 'お問い合わせ'].map(item => (
+            {settings.content.footerNav.map(item => (
               <span key={item} style={{ cursor: 'pointer' }}>{item}</span>
             ))}
           </nav>
@@ -880,7 +948,7 @@ function PreviewContent() {
             opacity: 0.5,
           }}
         >
-          &copy; RICE CLOUD JAPAN All Rights Reserved.
+          {settings.content.footerCopyright}
         </p>
       </footer>
         </div>
