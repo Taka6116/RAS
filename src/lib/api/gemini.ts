@@ -34,15 +34,15 @@ async function callClaudeOnBedrock(prompt: string): Promise<string> {
   })
 
   // 優先順（us クロスリージョン推論プロファイル）:
-  //   1. Claude 3.5 Sonnet v2 （高品質）
-  //   2. Claude 3.5 Sonnet
-  //   3. Claude 3.5 Haiku （高速）
-  //   4. Claude 3.5 Sonnet (on-demand・バックアップ)
+  //   1. Claude 3.5 Sonnet v2 （高品質・現行主力）
+  //   2. Claude 3.5 Haiku   （高速・低コスト）
+  //   3. On-demand 直接指定  （推論プロファイル不可時のバックアップ）
+  // ※ claude-3-5-sonnet-20240620-v1:0 は 2025年10月廃止済みのため除去
   const candidateModels = [
     'us.anthropic.claude-3-5-sonnet-20241022-v2:0',
-    'us.anthropic.claude-3-5-sonnet-20240620-v1:0',
     'us.anthropic.claude-3-5-haiku-20241022-v1:0',
-    'anthropic.claude-3-5-sonnet-20240620-v1:0',
+    'anthropic.claude-3-5-sonnet-20241022-v2:0',
+    'anthropic.claude-3-5-haiku-20241022-v1:0',
   ]
 
   let lastErr: Error | null = null
