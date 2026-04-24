@@ -307,6 +307,33 @@ const STANDALONE_H2_REGEXES: RegExp[] = [
   /^RICE CLOUD(?:（ライスクラウド）)?ならではの視点(（独自性）)?$/,
 ];
 
+type ParsedNumberedHeading = {
+  level: 2 | 3 | 4 | 5;
+  text: string;
+  anchorSuffix: string;
+};
+
+/**
+ * 番号付き見出しを階層化して解釈する。
+ * - 1. 見出し -> h2
+ * - 1-1. 見出し -> h3
+ * - 1-1-1. 見出し -> h4
+ * - 1-1-1-1. 見出し -> h5
+ */
+function parseNumberedHeading(trimmed: string): ParsedNumberedHeading | null {
+  const m = trimmed.match(/^(\d+(?:-\d+)*)[．.]\s+(.+)$/);
+  if (!m) return null;
+  const numbering = m[1]!;
+  const text = m[2]!;
+  const depth = numbering.split('-').length;
+  const level = Math.min(depth + 1, 5) as 2 | 3 | 4 | 5;
+  return {
+    level,
+    text,
+    anchorSuffix: numbering,
+  };
+}
+
 /** 【まとめ】等の h2 表示テキスト（装飾括弧のみ除去。見出しに本文が続く行はそのまま） */
 function normalizeStandaloneH2PlainText(trimmed: string): string {
   if (/^【?\s*まとめ\s*】?[。．]?$/.test(trimmed)) return 'まとめ';
@@ -373,6 +400,8 @@ function fixStrongParagraphNesting(html: string): string {
 export function convertToHtml(content: string, settings?: SiteSettings): string {
   const H2 = settings?.styles.h2Css || H2_STYLE;
   const H3 = settings?.styles.h3Css || H3_STYLE;
+  const H4 = settings?.styles.h4Css || settings?.styles.h3Css || H3_STYLE;
+  const H5 = settings?.styles.h4Css || settings?.styles.h3Css || H3_STYLE;
   const P = settings?.styles.bodyCss || P_STYLE;
   const lines = content.split('\n');
   const htmlLines: string[] = [];
@@ -438,24 +467,24 @@ export function convertToHtml(content: string, settings?: SiteSettings): string 
       continue;
     }
 
-    // h2 見出し: "1. テキスト" — 直前が空行（段落バッファが空）の場合のみ見出しとして扱う
-    // 本文中の番号リスト（"1. ..." が段落の途中にある場合）は通常テキストとして扱う
-    if (/^\d+[．.]\s/.test(trimmed) && currentParagraph.length === 0) {
-      h2Count++;
-      h3Count = 0;
-      const text = trimmed.replace(/^\d+[．.]\s*/, '');
-      htmlLines.push(`<h2 id="section-${h2Count}" style="${H2}">${applyInlineFormatting(text)}</h2>`);
-      continue;
-    }
-
-    // h3 小見出し: "1-1. テキスト" — 同様に直前が空行の場合のみ
-    if (/^\d+-\d+[．.]\s/.test(trimmed) && currentParagraph.length === 0) {
-      h3Count++;
-      const text = trimmed
-        .replace(/^\d+-\d+[．.]\s*/, '')
+    // 番号付き見出しは段落途中でなければ階層に応じて h2〜h5 へ変換
+    const numbered = parseNumberedHeading(trimmed);
+    if (numbered && currentParagraph.length === 0) {
+      const text = numbered.text
         .replace(/\*\*(.+?)\*\*/g, '$1')
         .replace(/\*\*/g, '');
-      htmlLines.push(`<h3 id="section-${h2Count}-${h3Count}" style="${H3}">${text}</h3>`);
+      if (numbered.level === 2) {
+        h2Count++;
+        h3Count = 0;
+        htmlLines.push(`<h2 id="section-${h2Count}" style="${H2}">${applyInlineFormatting(text)}</h2>`);
+      } else if (numbered.level === 3) {
+        h3Count++;
+        htmlLines.push(`<h3 id="section-${h2Count}-${h3Count}" style="${H3}">${text}</h3>`);
+      } else if (numbered.level === 4) {
+        htmlLines.push(`<h4 id="section-${h2Count}-${numbered.anchorSuffix}" style="${H4}">${text}</h4>`);
+      } else {
+        htmlLines.push(`<h5 id="section-${h2Count}-${numbered.anchorSuffix}" style="${H5}">${text}</h5>`);
+      }
       continue;
     }
 

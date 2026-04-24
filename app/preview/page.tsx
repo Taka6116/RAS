@@ -108,11 +108,28 @@ ${img}
 </div>`.trim()
 }
 
+type ParsedNumberedHeading = {
+  level: 2 | 3 | 4 | 5
+  text: string
+}
+
+function parseNumberedHeading(trimmed: string): ParsedNumberedHeading | null {
+  const m = trimmed.match(/^(\d+(?:-\d+)*)[．.]\s+(.+)$/)
+  if (!m) return null
+  const numbering = m[1]!
+  const text = m[2]!
+  const depth = numbering.split('-').length
+  const level = Math.min(depth + 1, 5) as 2 | 3 | 4 | 5
+  return { level, text }
+}
+
 function formatContent(content: string, settings: SiteSettings): string {
   const supervisorBlock = buildSupervisorBlockPreview(settings)
 
   const H2_STYLE = settings.styles.h2Css || DEFAULT_SITE_SETTINGS.styles.h2Css
   const H3_STYLE = settings.styles.h3Css || DEFAULT_SITE_SETTINGS.styles.h3Css
+  const H4_STYLE = settings.styles.h4Css || settings.styles.h3Css || DEFAULT_SITE_SETTINGS.styles.h4Css
+  const H5_STYLE = settings.styles.h4Css || settings.styles.h3Css || DEFAULT_SITE_SETTINGS.styles.h4Css
   const P_STYLE = settings.styles.bodyCss || DEFAULT_SITE_SETTINGS.styles.bodyCss
 
   const applyInlineFormatting = (text: string): string =>
@@ -142,15 +159,18 @@ function formatContent(content: string, settings: SiteSettings): string {
       continue
     }
 
-    if (/^\d+[．.]\s/.test(trimmed) && currentParagraph.length === 0) {
-      const text = trimmed.replace(/^\d+[．.]\s*/, '')
-      htmlLines.push(`<h2 style="${H2_STYLE}">${applyInlineFormatting(text)}</h2>`)
-      continue
-    }
-
-    if (/^\d+-\d+[．.]\s/.test(trimmed) && currentParagraph.length === 0) {
-      const text = trimmed.replace(/^\d+-\d+[．.]\s*/, '').replace(/\*\*(.+?)\*\*/g, '$1')
-      htmlLines.push(`<h3 style="${H3_STYLE}">${text}</h3>`)
+    const numbered = parseNumberedHeading(trimmed)
+    if (numbered && currentParagraph.length === 0) {
+      const text = numbered.text.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*\*/g, '')
+      if (numbered.level === 2) {
+        htmlLines.push(`<h2 style="${H2_STYLE}">${applyInlineFormatting(text)}</h2>`)
+      } else if (numbered.level === 3) {
+        htmlLines.push(`<h3 style="${H3_STYLE}">${text}</h3>`)
+      } else if (numbered.level === 4) {
+        htmlLines.push(`<h4 style="${H4_STYLE}">${text}</h4>`)
+      } else {
+        htmlLines.push(`<h5 style="${H5_STYLE}">${text}</h5>`)
+      }
       continue
     }
 
