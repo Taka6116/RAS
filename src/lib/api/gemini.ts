@@ -33,16 +33,16 @@ async function callClaudeOnBedrock(prompt: string): Promise<string> {
     credentials: { accessKeyId, secretAccessKey },
   })
 
-  // 優先順（us クロスリージョン推論プロファイル）:
-  //   1. Claude 3.5 Sonnet v2 （高品質・現行主力）
-  //   2. Claude 3.5 Haiku   （高速・低コスト）
-  //   3. On-demand 直接指定  （推論プロファイル不可時のバックアップ）
+  // 優先順（us クロスリージョン推論プロファイルのみ使用。on-demand直接指定は非対応のため除外）:
+  //   1. Claude Sonnet 4.5  （最新・高品質）
+  //   2. Claude 3.5 Sonnet v2 （安定・バックアップ）
+  //   3. Claude 3.5 Haiku   （高速・低コスト）
   // ※ claude-3-5-sonnet-20240620-v1:0 は 2025年10月廃止済みのため除去
+  // ※ anthropic.claude-* (on-demand直接) は on-demand throughput 非対応エラーになるため除去
   const candidateModels = [
+    'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
     'us.anthropic.claude-3-5-sonnet-20241022-v2:0',
     'us.anthropic.claude-3-5-haiku-20241022-v1:0',
-    'anthropic.claude-3-5-sonnet-20241022-v2:0',
-    'anthropic.claude-3-5-haiku-20241022-v1:0',
   ]
 
   let lastErr: Error | null = null
