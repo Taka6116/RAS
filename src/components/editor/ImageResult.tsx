@@ -7,7 +7,7 @@ import { ArticleData, ProcessingState, Step } from '@/lib/types'
 import StepIndicator from './StepIndicator'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
-import { ArrowLeft, ArrowRight, Clock, Download, RefreshCw, Sparkles, Upload } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Clock, Download, RefreshCw, Upload } from 'lucide-react'
 import { setSessionPreviewImage } from '@/lib/sessionPreviewImage'
 
 interface ImageResultProps {
@@ -365,7 +365,16 @@ function ImageGenerationLoader() {
               transform="rotate(-90 50 50)"
             />
           </svg>
-          <Sparkles className="relative w-9 h-9 text-[#0A2540]" strokeWidth={1.75} aria-hidden />
+          <svg className="relative w-9 h-9" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M12 2C12 2 16 8 16 12C16 16 12 22 12 22C12 22 8 16 8 12C8 8 12 2 12 2Z" fill="url(#imgGrad1)" opacity="0.95"/>
+              <path d="M2 12C2 12 8 8 12 8C16 8 22 12 22 12C22 12 16 16 12 16C8 16 2 12 2 12Z" fill="url(#imgGrad1)" opacity="0.65"/>
+              <defs>
+                <linearGradient id="imgGrad1" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#0056A0"/>
+                  <stop offset="100%" stopColor="#009AE0"/>
+                </linearGradient>
+              </defs>
+            </svg>
         </div>
 
         <h2 className="text-lg sm:text-xl font-bold text-[#1A1A2E] leading-snug tracking-tight">

@@ -9,7 +9,7 @@ import { SavedKeyword, getAllKeywords } from '@/lib/keywordStorage'
 import StepIndicator from './StepIndicator'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
-import { ArrowRight, Trash2, Sparkles, ChevronDown, Check } from 'lucide-react'
+import { ArrowRight, Trash2, ChevronDown, Check } from 'lucide-react'
 
 interface ArticleInputProps {
   article: ArticleData
@@ -309,10 +309,7 @@ export default function ArticleInput({
                   {generating ? (
                     <span className="font-bold text-base">記事を作成中...</span>
                   ) : (
-                    <>
-                      <Sparkles size={18} className="mr-2" />
-                      <span className="font-bold text-base">記事作成</span>
-                    </>
+                    <span className="font-bold text-base">記事作成</span>
                   )}
                 </Button>
               </div>
@@ -495,20 +492,21 @@ function GeneratingLoader({ step }: { step: string }) {
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200/90 max-w-md w-full p-6 sm:p-8 text-left">
         <div className="flex items-start gap-4 mb-6">
           <div
-            className="flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center border border-indigo-100"
+            className="flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center"
             style={{
-              background: '#EEF2FF',
-              boxShadow: '0 1px 2px rgba(15, 23, 42, 0.06)',
+              background: 'linear-gradient(135deg, #0056A0 0%, #009AE0 60%, #33C0F0 100%)',
+              boxShadow: '0 2px 10px rgba(0,154,224,0.35)',
             }}
           >
-            <Sparkles
-              className={`w-5 h-5 text-[#0A2540] ${reduceMotion ? '' : 'motion-safe:opacity-90 motion-safe:animate-pulse'}`}
-              aria-hidden
-            />
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.4)" strokeWidth="2"/>
+              <path d="M12 2 C12 2 16 8 16 12 C16 16 12 22 12 22 C12 22 8 16 8 12 C8 8 12 2 12 2Z" fill="white" opacity="0.9"/>
+              <path d="M2 12 C2 12 8 8 12 8 C16 8 22 12 22 12 C22 12 16 16 12 16 C8 16 2 12 2 12Z" fill="white" opacity="0.6"/>
+            </svg>
           </div>
           <div className="flex-1 min-w-0 pt-0.5">
             <h2 id="generating-loader-title" className="text-base font-bold text-[#1A1A2E] leading-snug">
-              Gemini が執筆しています
+              AIが執筆しています
             </h2>
             <p className="text-xs text-[#64748B] mt-1.5 leading-relaxed">
               編集方針に沿って下書きを生成しています

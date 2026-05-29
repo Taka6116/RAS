@@ -11,19 +11,30 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean
 }
 
-const variantStyles: Record<ButtonVariant, string> = {
-  primary:
-    'bg-[#009AE0] text-white hover:bg-[#0080C0] border border-[#009AE0] hover:border-[#0080C0]',
-  ghost:
-    'bg-transparent text-[#0A2540] border border-[#D0E3F0] hover:bg-[#F0F7FC] hover:border-[#0A2540]',
-  navy:
-    'bg-[#0A2540] text-white hover:bg-[#163A5F] border border-[#0A2540] hover:border-[#163A5F]',
-}
-
 const sizeStyles = {
   sm: 'px-3 py-1.5 text-sm',
   md: 'px-4 py-2 text-sm',
   lg: 'px-6 py-3 text-base',
+}
+
+const variantInlineStyle: Record<ButtonVariant, React.CSSProperties> = {
+  primary: {
+    background: 'linear-gradient(135deg, #0056A0 0%, #009AE0 60%, #33C0F0 100%)',
+    border: 'none',
+    color: '#fff',
+    boxShadow: '0 2px 12px rgba(0,154,224,0.35), inset 0 1px 0 rgba(255,255,255,0.25)',
+  },
+  ghost: {
+    background: 'transparent',
+    border: '1px solid #D0E3F0',
+    color: '#0A2540',
+  },
+  navy: {
+    background: 'linear-gradient(135deg, #0A1628 0%, #0A2540 60%, #0056A0 100%)',
+    border: 'none',
+    color: '#fff',
+    boxShadow: '0 2px 12px rgba(10,37,64,0.35), inset 0 1px 0 rgba(255,255,255,0.12)',
+  },
 }
 
 export default function Button({
@@ -33,6 +44,7 @@ export default function Button({
   loading = false,
   disabled,
   className = '',
+  style,
   ...props
 }: ButtonProps) {
   const isDisabled = disabled || loading
@@ -46,11 +58,11 @@ export default function Button({
         font-semibold rounded-lg
         transition-all duration-150
         cursor-pointer select-none
-        ${variantStyles[variant]}
         ${sizeStyles[size]}
-        ${isDisabled ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}
+        ${isDisabled ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'hover:brightness-110 hover:scale-[1.02] active:scale-[0.98]'}
         ${className}
       `}
+      style={{ ...variantInlineStyle[variant], ...style }}
     >
       {loading && (
         <svg

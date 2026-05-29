@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Sparkles } from 'lucide-react'
 
 const STEPS = [
   { label: '記事を読み込んでいます',      detail: '文章構造・段落・キーワードを解析中...' },
@@ -55,14 +54,15 @@ export default function GeminiLoadingCard() {
       className="rounded-2xl overflow-hidden"
       style={{
         background: 'white',
-        border: '1px solid #D0E3F0',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 8px 32px rgba(0,0,0,0.06)',
+        border: '1px solid rgba(0,154,224,0.15)',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 8px 32px rgba(0,154,224,0.10)',
       }}
     >
       <div
         className="px-8 pt-10 pb-6 flex flex-col items-center text-center"
-        style={{ background: 'linear-gradient(180deg, #F8FAFC 0%, white 100%)' }}
+        style={{ background: 'linear-gradient(180deg, #F0F7FC 0%, white 100%)' }}
       >
+        {/* グラデーションアイコン（Sparklesなし） */}
         <div className="relative w-20 h-20 mb-5">
           <div
             className="absolute inset-0 rounded-full"
@@ -77,21 +77,27 @@ export default function GeminiLoadingCard() {
             className="absolute inset-2 rounded-full"
             style={{
               border: '2px solid transparent',
-              borderTopColor: '#0A2540',
-              borderLeftColor: '#0A254040',
+              borderTopColor: '#0056A0',
+              borderLeftColor: '#0056A040',
               animation: 'spin 2s linear infinite reverse',
             }}
           />
           <div
             className="absolute inset-4 rounded-full flex items-center justify-center"
-            style={{ background: '#E6F5FC' }}
+            style={{
+              background: 'linear-gradient(135deg, #0056A0 0%, #009AE0 60%, #33C0F0 100%)',
+              boxShadow: '0 2px 8px rgba(0,154,224,0.4)',
+            }}
           >
-            <Sparkles size={20} style={{ color: '#009AE0' }} />
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M12 2C12 2 16 8 16 12C16 16 12 22 12 22C12 22 8 16 8 12C8 8 12 2 12 2Z" fill="white" opacity="0.95"/>
+              <path d="M2 12C2 12 8 8 12 8C16 8 22 12 22 12C22 12 16 16 12 16C8 16 2 12 2 12Z" fill="white" opacity="0.65"/>
+            </svg>
           </div>
         </div>
 
         <h3 className="text-lg font-bold mb-1" style={{ color: '#1A1A2E' }}>
-          Gemini が記事を推敲中{dots}
+          AIが記事を推敲中{dots}
         </h3>
         <p className="text-sm" style={{ color: '#64748B' }}>
           AIが品質・読みやすさ・SEOを自動改善しています
@@ -113,7 +119,11 @@ export default function GeminiLoadingCard() {
               <div
                 className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-all duration-300"
                 style={{
-                  background: isDone ? '#0A2540' : isActive ? '#E6F5FC' : '#F1F5F9',
+                  background: isDone
+                    ? 'linear-gradient(135deg, #0056A0 0%, #009AE0 100%)'
+                    : isActive
+                      ? 'rgba(0,154,224,0.10)'
+                      : '#F1F5F9',
                   border: isActive ? '2px solid #009AE0' : 'none',
                 }}
               >
@@ -177,7 +187,7 @@ export default function GeminiLoadingCard() {
             className="h-full rounded-full transition-all duration-300 ease-out"
             style={{
               width: `${progress}%`,
-              background: 'linear-gradient(90deg, #0A2540 0%, #009AE0 100%)',
+              background: 'linear-gradient(90deg, #0056A0 0%, #009AE0 60%, #33C0F0 100%)',
             }}
           />
         </div>
