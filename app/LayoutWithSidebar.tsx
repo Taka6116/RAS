@@ -27,9 +27,9 @@ export default function LayoutWithSidebar({
       <aside
         className="fixed top-0 left-0 h-screen w-[220px] flex-shrink-0 z-40 flex flex-col"
         style={{
-          background: 'linear-gradient(180deg, #0A1628 0%, #0A2540 40%, #005FA3 80%, #009AE0 100%)',
-          borderRight: '1px solid rgba(255,255,255,0.08)',
-          boxShadow: '4px 0 24px rgba(0,0,0,0.25)',
+          background: 'linear-gradient(180deg, #0088CC 0%, #009AE0 35%, #00AEEE 65%, #0080C0 100%)',
+          borderRight: '1px solid rgba(255,255,255,0.12)',
+          boxShadow: '4px 0 24px rgba(0,154,224,0.30)',
         }}
       >
         {/* ロゴ */}
@@ -69,11 +69,11 @@ export default function LayoutWithSidebar({
                 style={{
                   color: isActive ? '#FFFFFF' : 'rgba(255,255,255,0.72)',
                   background: isActive
-                    ? 'linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(0,154,224,0.35) 100%)'
+                    ? 'linear-gradient(135deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.10) 100%)'
                     : 'transparent',
                   backdropFilter: isActive ? 'blur(8px)' : 'none',
-                  border: isActive ? '1px solid rgba(255,255,255,0.20)' : '1px solid transparent',
-                  boxShadow: isActive ? '0 2px 12px rgba(0,154,224,0.25), inset 0 1px 0 rgba(255,255,255,0.15)' : 'none',
+                  border: isActive ? '1px solid rgba(255,255,255,0.30)' : '1px solid transparent',
+                  boxShadow: isActive ? '0 2px 12px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.30)' : 'none',
                   textShadow: isActive ? '0 1px 4px rgba(0,0,0,0.3)' : 'none',
                 }}
               >
