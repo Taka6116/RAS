@@ -10,9 +10,10 @@ export default function MainContentWidth({
   const pathname = usePathname()
   const isPreview = pathname === '/preview'
   const isEditor = pathname === '/editor'
+  const isAhrefs = pathname === '/ahrefs'
   return (
     <div
-      className={`w-full ${isPreview ? 'max-w-[1600px]' : isEditor ? 'max-w-[1400px]' : 'max-w-[1000px]'}`}
+      className={`w-full ${isPreview ? 'max-w-[1600px]' : isEditor ? 'max-w-[1400px]' : isAhrefs ? 'max-w-[1400px]' : 'max-w-[1000px]'}`}
     >
       {children}
     </div>

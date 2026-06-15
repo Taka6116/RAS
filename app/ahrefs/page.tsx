@@ -5,10 +5,61 @@ import { useRouter } from 'next/navigation'
 import { Upload, X, Search, Sparkles, Globe, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import type { AhrefsDataset, AhrefsDatasetType } from '@/lib/ahrefsCsvParser'
 import { analyzeKeywords, detectTrends, getCategoryCounts, mergeAndAnalyze, type ScoredKeyword, type TrendKeyword, type CategoryCount, type PriorityLevel } from '@/lib/ahrefsAnalyzer'
+import type { SavedArticle } from '@/lib/types'
 
 const PAGE_SIZE = 50
 
 type TabKey = 'opportunity' | 'organic' | 'trends' | 'all'
+
+/** KWに紐づく記事のアクション情報 */
+interface ArticleAction {
+  type: 'published' | 'scheduled' | 'draft'
+  date: string          // ISO文字列
+  wordpressUrl?: string
+}
+
+/** キーワード → 最新アクション情報のマップを構築する */
+function buildArticleActionMap(articles: SavedArticle[]): Map<string, ArticleAction> {
+  const map = new Map<string, ArticleAction>()
+  // 新しい順に処理して最新アクションを記録
+  const sorted = [...articles].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  )
+  for (const art of sorted) {
+    const kw = art.targetKeyword?.trim().toLowerCase()
+    if (!kw || map.has(kw)) continue
+
+    const wpStatus = art.wordpressPostStatus
+    if (wpStatus === 'publish' || wpStatus === 'published' || art.status === 'published') {
+      map.set(kw, {
+        type: 'published',
+        date: art.scheduledDate || art.createdAt,
+        wordpressUrl: art.wordpressUrl,
+      })
+    } else if (wpStatus === 'future' || art.scheduledDate) {
+      map.set(kw, {
+        type: 'scheduled',
+        date: art.scheduledDate || art.createdAt,
+        wordpressUrl: art.wordpressUrl,
+      })
+    } else if (wpStatus === 'draft' || art.status !== 'draft') {
+      // 下書き送信済み（WordPressに送った場合）
+      if (wpStatus === 'draft') {
+        map.set(kw, {
+          type: 'draft',
+          date: art.createdAt,
+          wordpressUrl: art.wordpressUrl,
+        })
+      }
+    }
+  }
+  return map
+}
+
+function fmtActionDate(iso: string): string {
+  const d = new Date(iso)
+  return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}`
+}
 
 interface DatasetMeta {
   id: string
@@ -170,6 +221,7 @@ export default function AhrefsPage() {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [articleActionMap, setArticleActionMap] = useState<Map<string, ArticleAction>>(new Map())
 
   const [activeTab, setActiveTab] = useState<TabKey>('opportunity')
   const [selectedCategory, setSelectedCategory] = useState('all')
@@ -194,6 +246,20 @@ export default function AhrefsPage() {
   }, [])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  // 記事一覧を取得してKW→アクション情報のマップを構築
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/articles', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(data => {
+        if (!cancelled && Array.isArray(data?.articles)) {
+          setArticleActionMap(buildArticleActionMap(data.articles as SavedArticle[]))
+        }
+      })
+      .catch(() => { /* ignore */ })
+    return () => { cancelled = true }
+  }, [])
 
   const handleUpload = useCallback(async (fileList: FileList | null) => {
     if (!fileList?.length || uploading) return
@@ -294,7 +360,7 @@ export default function AhrefsPage() {
 
   return (
     <div
-      className="w-full py-8"
+      className="w-full py-4"
       onDragOver={e => { e.preventDefault(); setDragOver(true) }}
       onDragLeave={() => setDragOver(false)}
       onDrop={e => { e.preventDefault(); setDragOver(false); handleUpload(e.dataTransfer.files) }}
@@ -511,7 +577,8 @@ export default function AhrefsPage() {
                           </>
                         )}
                         <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: isOrganicTab ? '10%' : '13%' }}>カテゴリ</th>
-                        <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: isOrganicTab ? '10%' : '11%' }}>アクション</th>
+                        <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: isOrganicTab ? '8%' : '9%' }}>アクション</th>
+                        <th className="text-center py-3 px-4 font-semibold text-[#64748B]" style={{ width: isOrganicTab ? '10%' : '11%' }}>投稿状態</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -587,11 +654,14 @@ export default function AhrefsPage() {
                               記事作成
                             </button>
                           </td>
+                          <td className="py-3 px-4 text-center">
+                            <ArticleActionBadge action={articleActionMap.get(kw.keyword.trim().toLowerCase())} />
+                          </td>
                         </tr>
                       ))}
                       {visible.length === 0 && (
                         <tr>
-                          <td colSpan={isOrganicTab ? 10 : 8} className="py-12 text-center text-[#94A3B8] text-sm">
+                          <td colSpan={isOrganicTab ? 11 : 9} className="py-12 text-center text-[#94A3B8] text-sm">
                             {activeTab === 'opportunity' && kwScored.length === 0
                               ? 'Keywords ExplorerのCSVをアップロードしてください'
                               : activeTab === 'organic' && organicScored.length === 0
@@ -658,6 +728,53 @@ function PriorityBadge({ level }: { level: PriorityLevel }) {
     </span>
   )
   return <span className="text-xs text-gray-300">−</span>
+}
+
+function ArticleActionBadge({ action }: { action: ArticleAction | undefined }) {
+  if (!action) {
+    return <span className="text-[11px] text-[#CBD5E1]">—</span>
+  }
+  const dateStr = fmtActionDate(action.date)
+
+  if (action.type === 'published') {
+    return (
+      <div className="flex flex-col items-center gap-0.5">
+        <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-green-50 text-green-700 border border-green-200 whitespace-nowrap">
+          投稿済み
+        </span>
+        <span className="text-[10px] text-[#64748B]">{dateStr}</span>
+        {action.wordpressUrl && (
+          <a
+            href={action.wordpressUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] text-[#009AE0] hover:underline"
+          >
+            WP表示
+          </a>
+        )}
+      </div>
+    )
+  }
+  if (action.type === 'scheduled') {
+    return (
+      <div className="flex flex-col items-center gap-0.5">
+        <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap">
+          予約投稿
+        </span>
+        <span className="text-[10px] text-[#64748B]">{dateStr}</span>
+      </div>
+    )
+  }
+  // draft
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-slate-50 text-slate-600 border border-slate-200 whitespace-nowrap">
+        下書き送信
+      </span>
+      <span className="text-[10px] text-[#64748B]">{dateStr}</span>
+    </div>
+  )
 }
 
 function TrendsTableView({ trends }: { trends: TrendKeyword[] }) {
