@@ -1,9 +1,53 @@
+import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import {
   BedrockRuntimeClient,
   InvokeModelCommand,
 } from '@aws-sdk/client-bedrock-runtime'
 import { generateImagePromptFromArticle } from '@/lib/api/gemini'
+import { putS3Object, putS3ObjectBuffer } from '@/lib/s3Reference'
+
+/** 生成画像のS3プレフィックス（jpg本体 + メタjson） */
+const GENERATED_IMAGE_PREFIX = 'images/generated/'
+
+interface GeneratedImageMeta {
+  id: string
+  key: string
+  title: string
+  targetKeyword: string
+  prompt: string
+  createdAt: string
+}
+
+/**
+ * 生成画像をS3に保存する（jpg本体 + メタjson）。失敗しても画像生成自体は成功扱いにするため例外は投げない。
+ * @returns 保存できた場合は imageId、失敗時は null
+ */
+async function saveGeneratedImageToS3(
+  base64Image: string,
+  meta: { title: string; targetKeyword: string; prompt: string }
+): Promise<string | null> {
+  try {
+    const id = randomUUID()
+    const imageKey = `${GENERATED_IMAGE_PREFIX}${id}.jpg`
+    const buffer = Buffer.from(base64Image, 'base64')
+    const ok = await putS3ObjectBuffer(imageKey, buffer, 'image/jpeg')
+    if (!ok) return null
+    const metaObj: GeneratedImageMeta = {
+      id,
+      key: imageKey,
+      title: meta.title,
+      targetKeyword: meta.targetKeyword,
+      prompt: meta.prompt,
+      createdAt: new Date().toISOString(),
+    }
+    await putS3Object(`${GENERATED_IMAGE_PREFIX}${id}.json`, JSON.stringify(metaObj), 'application/json')
+    return id
+  } catch (e) {
+    console.warn('[image] S3保存失敗（画像生成自体は成功）:', (e as Error)?.message)
+    return null
+  }
+}
 
 /**
  * Stable Diffusion 3.5 は us-west-2 でのみ利用可能。
@@ -153,10 +197,18 @@ export async function POST(request: NextRequest) {
       throw new Error('画像データが返ってきませんでした')
     }
 
+    const imageId = await saveGeneratedImageToS3(base64Image, {
+      title: title!.trim(),
+      targetKeyword: typeof targetKeyword === 'string' ? targetKeyword.trim() : '',
+      prompt,
+    })
+
     return NextResponse.json({
       imageBase64: base64Image,
       mimeType: 'image/jpeg',
       prompt,
+      imageId,
+      imageUrl: imageId ? `/api/images/file/${imageId}` : undefined,
     })
   } catch (error) {
     const err = error as Error & { name?: string; $metadata?: unknown; Code?: string }

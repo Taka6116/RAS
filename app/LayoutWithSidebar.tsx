@@ -53,6 +53,7 @@ export default function LayoutWithSidebar({
             { href: '/editor',    label: '記事を作成' },
             { href: '/articles',  label: '保存済み記事一覧' },
             { href: '/published', label: '過去投稿済み記事一覧' },
+            { href: '/images',    label: '画像' },
             { href: '/schedule',  label: '投稿スケジュール' },
             { href: '/prompts',   label: 'プロンプト' },
             { href: '/keywords',  label: 'キーワード' },

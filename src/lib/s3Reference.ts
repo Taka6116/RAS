@@ -105,6 +105,28 @@ export async function putS3Object(key: string, body: string, contentType = 'appl
   }
 }
 
+/** S3オブジェクトをバイナリ（Buffer / Uint8Array）で保存する（画像など） */
+export async function putS3ObjectBuffer(
+  key: string,
+  body: Uint8Array,
+  contentType = 'application/octet-stream'
+): Promise<boolean> {
+  const client = getClient()
+  if (!client) return false
+  try {
+    await client.send(new PutObjectCommand({
+      Bucket: BUCKET!,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    }))
+    return true
+  } catch (e) {
+    console.error('S3 put(buffer) error:', e)
+    return false
+  }
+}
+
 export async function deleteS3Object(key: string): Promise<boolean> {
   const client = getClient()
   if (!client) return false

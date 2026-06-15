@@ -8,7 +8,7 @@ import CtaTab from '@/components/settings/CtaTab'
 import ContentTab from '@/components/settings/ContentTab'
 import StyleTab from '@/components/settings/StyleTab'
 
-type TabKey = 'brand' | 'cta' | 'content' | 'style' | 'extra'
+type TabKey = 'brand' | 'cta' | 'content' | 'style' | 'extra' | 'semantic'
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: 'brand', label: 'ブランド' },
@@ -16,7 +16,124 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: 'content', label: 'コンテンツ' },
   { key: 'style', label: 'スタイル(CSS)' },
   { key: 'extra', label: '追加CTAブロック' },
+  { key: 'semantic', label: '意味検索インデックス' },
 ]
+
+interface IndexStats {
+  exists: boolean
+  count: number
+  updatedAt: string | null
+  model: string | null
+  bySource?: Record<string, number>
+}
+
+function SemanticIndexPanel() {
+  const [stats, setStats] = useState<IndexStats | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [reindexing, setReindexing] = useState(false)
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+
+  const loadStats = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/embeddings/reindex', { cache: 'no-store' })
+      const data = await res.json()
+      setStats(data)
+    } catch {
+      setStats(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { loadStats() }, [loadStats])
+
+  const handleReindex = useCallback(async () => {
+    if (!confirm('S3の参照資料・導入事例・過去記事をすべてベクトル化します。データ量により数分かかることがあります。実行しますか？')) return
+    setReindexing(true)
+    setMsg(null)
+    try {
+      const res = await fetch('/api/embeddings/reindex', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || '再構築に失敗しました')
+      setMsg({ kind: 'ok', text: `インデックスを再構築しました（${data.count} チャンク）。` })
+      await loadStats()
+    } catch (e) {
+      setMsg({ kind: 'err', text: e instanceof Error ? e.message : '再構築に失敗しました' })
+    } finally {
+      setReindexing(false)
+    }
+  }, [loadStats])
+
+  const sourceLabel: Record<string, string> = {
+    materials: '参照資料',
+    'case-studies': '導入事例',
+    articles: '過去記事',
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-lg font-bold text-[#0A2540] mb-1">意味検索インデックス</h2>
+        <p className="text-sm text-[#475569]">
+          S3の参照資料・匿名導入事例・過去記事をBedrock Titanでベクトル化し、一次執筆時に「意味が近い資料の活用」と「過去記事とトーンが被らない独自性」を両立させます。資料や記事を追加・更新したら再構築してください。
+        </p>
+      </div>
+
+      {msg && (
+        <div
+          className="px-4 py-2 rounded-lg text-sm font-semibold"
+          style={{
+            background: msg.kind === 'ok' ? '#ECFDF5' : '#FEF2F2',
+            color: msg.kind === 'ok' ? '#065F46' : '#991B1B',
+            border: `1px solid ${msg.kind === 'ok' ? '#A7F3D0' : '#FECACA'}`,
+          }}
+        >
+          {msg.text}
+        </div>
+      )}
+
+      <div className="rounded-xl border border-[#E2E8F0] p-5 bg-[#F8FAFC]">
+        {loading ? (
+          <p className="text-sm text-[#64748B]">読み込み中…</p>
+        ) : !stats?.exists ? (
+          <p className="text-sm text-[#64748B]">まだインデックスがありません。下のボタンで作成してください。</p>
+        ) : (
+          <div className="space-y-2 text-sm text-[#334155]">
+            <div className="flex justify-between">
+              <span className="text-[#64748B]">総チャンク数</span>
+              <span className="font-semibold">{stats.count}</span>
+            </div>
+            {stats.bySource && Object.entries(stats.bySource).map(([k, v]) => (
+              <div key={k} className="flex justify-between">
+                <span className="text-[#64748B]">{sourceLabel[k] ?? k}</span>
+                <span className="font-semibold">{v}</span>
+              </div>
+            ))}
+            <div className="flex justify-between">
+              <span className="text-[#64748B]">最終更新</span>
+              <span className="font-semibold">{stats.updatedAt ? new Date(stats.updatedAt).toLocaleString('ja-JP') : '-'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[#64748B]">モデル</span>
+              <span className="font-mono text-xs">{stats.model ?? '-'}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={handleReindex}
+        disabled={reindexing}
+        className="px-5 py-2.5 text-sm font-semibold rounded-lg text-white disabled:opacity-50"
+        style={{ background: 'linear-gradient(135deg, #0056A0 0%, #009AE0 60%, #33C0F0 100%)' }}
+      >
+        {reindexing ? 'インデックス再構築中…（数分かかる場合があります）' : 'インデックスを再構築する'}
+      </button>
+    </div>
+  )
+}
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS)
@@ -155,6 +272,7 @@ export default function SettingsPage() {
           {tab === 'content' && <ContentTab settings={settings} onChange={setSettings} />}
           {tab === 'style' && <StyleTab settings={settings} onChange={setSettings} />}
           {tab === 'extra' && <CtaTab settings={settings} onChange={setSettings} mode="extra" />}
+          {tab === 'semantic' && <SemanticIndexPanel />}
         </div>
       )}
     </div>

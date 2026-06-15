@@ -1,14 +1,23 @@
 'use client'
 
-import { useRef, useState, ChangeEvent } from 'react'
+import { useEffect, useRef, useState, ChangeEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { ArticleData, ProcessingState, Step } from '@/lib/types'
 import StepIndicator from './StepIndicator'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
-import { ArrowLeft, ArrowRight, Clock, Download, RefreshCw, Upload } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Clock, Download, RefreshCw, Upload, Images as ImagesIcon, X } from 'lucide-react'
 import { setSessionPreviewImage } from '@/lib/sessionPreviewImage'
+
+interface GeneratedImageMeta {
+  id: string
+  key: string
+  title: string
+  targetKeyword: string
+  prompt: string
+  createdAt: string
+}
 
 interface ImageResultProps {
   article: ArticleData
@@ -44,6 +53,28 @@ export default function ImageResult({
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [navigating, setNavigating] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pastImages, setPastImages] = useState<GeneratedImageMeta[]>([])
+  const [loadingImages, setLoadingImages] = useState(false)
+
+  useEffect(() => {
+    if (!pickerOpen) return
+    let cancelled = false
+    setLoadingImages(true)
+    fetch('/api/images', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(data => {
+        if (!cancelled && Array.isArray(data?.images)) setPastImages(data.images)
+      })
+      .catch(() => { /* ignore */ })
+      .finally(() => { if (!cancelled) setLoadingImages(false) })
+    return () => { cancelled = true }
+  }, [pickerOpen])
+
+  const handleSelectPastImage = (img: GeneratedImageMeta) => {
+    if (onImageUpload) onImageUpload(`/api/images/file/${img.id}`)
+    setPickerOpen(false)
+  }
 
   const handlePreview = async () => {
     setNavigating(true)
@@ -178,6 +209,15 @@ export default function ImageResult({
                   <RefreshCw size={15} />
                   別の画像を生成する
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="md"
+                  onClick={() => setPickerOpen(true)}
+                  disabled={fireflyStatus === 'loading'}
+                >
+                  <ImagesIcon size={15} />
+                  過去の画像から選ぶ
+                </Button>
               </div>
 
               <div className="w-full max-w-[640px] flex items-center justify-between gap-4 pt-2 border-t border-[#D0E3F0]">
@@ -216,6 +256,91 @@ export default function ImageResult({
           <ArrowLeft size={16} />
           Gemini推敲に戻る
         </Button>
+      </div>
+
+      {pickerOpen && (
+        <PastImagePicker
+          images={pastImages}
+          loading={loadingImages}
+          onSelect={handleSelectPastImage}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+function PastImagePicker({
+  images,
+  loading,
+  onSelect,
+  onClose,
+}: {
+  images: GeneratedImageMeta[]
+  loading: boolean
+  onSelect: (img: GeneratedImageMeta) => void
+  onClose: () => void
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#E2E8F0]">
+          <div>
+            <h2 className="text-base font-bold text-[#1A1A2E]">過去に生成した画像から選ぶ</h2>
+            <p className="text-xs text-[#64748B] mt-0.5">クリックすると、この記事の画像として再利用します</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-[#94A3B8] hover:text-[#1A1A2E] transition-colors"
+            aria-label="閉じる"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <div className="text-center py-16 text-sm text-[#94A3B8]">読み込み中...</div>
+          ) : images.length === 0 ? (
+            <div className="text-center py-16 text-sm text-[#64748B]">
+              まだ保存された画像がありません。画像を生成すると、ここから再利用できるようになります。
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {images.map(img => (
+                <button
+                  key={img.id}
+                  type="button"
+                  onClick={() => onSelect(img)}
+                  className="rounded-lg overflow-hidden border border-[#E2E8F0] hover:border-[#009AE0] hover:shadow-md transition-all text-left group"
+                >
+                  <div className="relative aspect-video bg-[#F1F5F9]">
+                    <Image
+                      src={`/api/images/file/${img.id}`}
+                      alt={img.title || 'generated image'}
+                      fill
+                      sizes="200px"
+                      className="object-cover"
+                      unoptimized
+                    />
+                  </div>
+                  <div className="p-2">
+                    <p className="text-[11px] font-medium text-[#1A1A2E] line-clamp-2 leading-snug">
+                      {img.title || '（無題）'}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

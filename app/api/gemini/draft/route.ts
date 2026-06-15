@@ -4,6 +4,17 @@ import { readFile } from 'fs/promises'
 import { generateFirstDraftFromPrompt } from '@/lib/api/gemini'
 import { findFileById, getFilePath } from '@/lib/dataStorage'
 import { getS3ObjectAsText, listS3Objects } from '@/lib/s3Reference'
+import { embedText, loadEmbeddingIndex, topKByCosine } from '@/lib/embeddings'
+
+/** 意味検索で本文に注入する関連チャンク数 */
+function getEmbedTopK(): number {
+  const raw = process.env.EMBED_TOPK?.trim()
+  if (raw) {
+    const n = parseInt(raw, 10)
+    if (Number.isFinite(n) && n >= 1 && n <= 30) return n
+  }
+  return 8
+}
 
 /** 一次執筆で参照する S3 のプレフィックス（md / csv / txt のみ突合）。末尾スラッシュなしでも可 */
 const DRAFT_MATERIAL_EXTS = new Set(['.md', '.csv', '.txt'])
@@ -124,6 +135,7 @@ export async function POST(request: NextRequest) {
 
     const parts: string[] = []
 
+    // アップロード資料は常に全文を使う
     if (ids.length > 0) {
       for (const id of ids) {
         const result = await readFileContentAsText(id)
@@ -133,7 +145,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (allKeys.length > 0) {
+    // 意味検索: S3資料・導入事例から関連チャンクを取得し、類似する過去記事のトーンは回避対象として渡す
+    let avoidToneSample: string | undefined
+    let usedSemantic = false
+    try {
+      const index = await loadEmbeddingIndex()
+      if (index && index.chunks.length > 0) {
+        const queryVec = await embedText(`${promptStr}\n${targetKeywordStr ?? ''}`)
+        const refChunks = topKByCosine(queryVec, index.chunks, getEmbedTopK(), ['materials', 'case-studies'])
+        for (const c of refChunks) {
+          parts.push(`--- 関連資料（意味検索）：${c.title} ---\n${c.text}`)
+        }
+        // 最も意味が近い過去記事 → トーン・構成の重複を避けるためのサンプル
+        const similarArticles = topKByCosine(queryVec, index.chunks, 1, ['articles'])
+        if (similarArticles.length > 0 && similarArticles[0]!.score > 0.5) {
+          avoidToneSample = similarArticles[0]!.text.slice(0, 1500)
+        }
+        usedSemantic = refChunks.length > 0
+      }
+    } catch (e) {
+      console.warn('[gemini/draft] 意味検索に失敗、従来方式にフォールバック:', (e as Error)?.message)
+    }
+
+    // フォールバック: 意味検索が使えない場合は従来どおりS3資料を全文連結
+    if (!usedSemantic && allKeys.length > 0) {
       for (const key of allKeys) {
         const result = await getS3ObjectAsText(key)
         if (result) {
@@ -159,7 +194,8 @@ export async function POST(request: NextRequest) {
     const { title, content } = await generateFirstDraftFromPrompt(
       promptStr,
       targetKeywordStr,
-      dataContext || undefined
+      dataContext || undefined,
+      avoidToneSample
     )
     return NextResponse.json({ title, content })
   } catch (error) {
