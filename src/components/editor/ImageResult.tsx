@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, ChangeEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, ChangeEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { ArticleData, ProcessingState, Step } from '@/lib/types'
@@ -10,12 +10,16 @@ import Button from '@/components/ui/Button'
 import { ArrowLeft, ArrowRight, Clock, Download, RefreshCw, Upload, Images as ImagesIcon, X } from 'lucide-react'
 import { setSessionPreviewImage } from '@/lib/sessionPreviewImage'
 
+type ImageSource = 'generated' | 'imported'
+
 interface GeneratedImageMeta {
   id: string
   key: string
+  source?: ImageSource
   title: string
-  targetKeyword: string
-  prompt: string
+  targetKeyword?: string
+  filename?: string
+  prompt?: string
   createdAt: string
 }
 
@@ -61,7 +65,7 @@ export default function ImageResult({
     if (!pickerOpen) return
     let cancelled = false
     setLoadingImages(true)
-    fetch('/api/images', { cache: 'no-store' })
+    fetch('/api/images?source=all', { cache: 'no-store' })
       .then(r => r.json())
       .then(data => {
         if (!cancelled && Array.isArray(data?.images)) setPastImages(data.images)
@@ -72,7 +76,8 @@ export default function ImageResult({
   }, [pickerOpen])
 
   const handleSelectPastImage = (img: GeneratedImageMeta) => {
-    if (onImageUpload) onImageUpload(`/api/images/file/${img.id}`)
+    const src = img.source ?? 'generated'
+    if (onImageUpload) onImageUpload(`/api/images/file/${img.id}?source=${src}`)
     setPickerOpen(false)
   }
 
@@ -281,6 +286,26 @@ function PastImagePicker({
   onSelect: (img: GeneratedImageMeta) => void
   onClose: () => void
 }) {
+  const [tab, setTab] = useState<'all' | ImageSource>('all')
+  const [search, setSearch] = useState('')
+
+  const filtered = useMemo(() => {
+    let list = images
+    if (tab !== 'all') list = list.filter(img => (img.source ?? 'generated') === tab)
+    const q = search.trim().toLowerCase()
+    if (q) list = list.filter(img => (img.title || img.filename || '').toLowerCase().includes(q) || (img.targetKeyword || '').toLowerCase().includes(q))
+    return list
+  }, [images, tab, search])
+
+  const generatedCount = images.filter(i => (i.source ?? 'generated') === 'generated').length
+  const importedCount = images.filter(i => i.source === 'imported').length
+
+  const TABS = [
+    { key: 'all' as const, label: 'すべて', count: images.length },
+    { key: 'generated' as const, label: 'AI生成', count: generatedCount },
+    { key: 'imported' as const, label: 'インポート済み', count: importedCount },
+  ]
+
   return (
     <div
       className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4"
@@ -290,54 +315,99 @@ function PastImagePicker({
         className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#E2E8F0]">
+        {/* ヘッダー */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#E2E8F0] gap-3">
           <div>
-            <h2 className="text-base font-bold text-[#1A1A2E]">過去に生成した画像から選ぶ</h2>
-            <p className="text-xs text-[#64748B] mt-0.5">クリックすると、この記事の画像として再利用します</p>
+            <h2 className="text-base font-bold text-[#1A1A2E]">画像ライブラリから選ぶ</h2>
+            <p className="text-xs text-[#64748B] mt-0.5">クリックするとこの記事の画像として設定されます</p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-[#94A3B8] hover:text-[#1A1A2E] transition-colors"
-            aria-label="閉じる"
-          >
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="検索..."
+              className="px-3 py-1.5 text-sm rounded-lg border border-[#D0E3F0] focus:outline-none focus:ring-2 focus:ring-[#009AE0]/30 w-36"
+            />
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-[#94A3B8] hover:text-[#1A1A2E] transition-colors flex-shrink-0"
+              aria-label="閉じる"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        {/* タブ */}
+        <div className="flex gap-0 px-6 border-b border-[#E2E8F0]">
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className="px-4 py-2.5 text-sm font-semibold transition-colors relative"
+              style={{ color: tab === t.key ? '#009AE0' : '#64748B' }}
+            >
+              {t.label}
+              <span className="ml-1 text-[11px] font-normal opacity-70">({t.count})</span>
+              {tab === t.key && (
+                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#009AE0] rounded-t" />
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* グリッド */}
+        <div className="flex-1 overflow-y-auto p-5">
           {loading ? (
             <div className="text-center py-16 text-sm text-[#94A3B8]">読み込み中...</div>
-          ) : images.length === 0 ? (
+          ) : filtered.length === 0 ? (
             <div className="text-center py-16 text-sm text-[#64748B]">
-              まだ保存された画像がありません。画像を生成すると、ここから再利用できるようになります。
+              {tab === 'imported'
+                ? 'インポート済み画像がありません。画像ライブラリページからインポートできます。'
+                : tab === 'generated'
+                ? 'まだ生成画像がありません。画像を生成するとここに表示されます。'
+                : '画像がありません。'}
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {images.map(img => (
-                <button
-                  key={img.id}
-                  type="button"
-                  onClick={() => onSelect(img)}
-                  className="rounded-lg overflow-hidden border border-[#E2E8F0] hover:border-[#009AE0] hover:shadow-md transition-all text-left group"
-                >
-                  <div className="relative aspect-video bg-[#F1F5F9]">
-                    <Image
-                      src={`/api/images/file/${img.id}`}
-                      alt={img.title || 'generated image'}
-                      fill
-                      sizes="200px"
-                      className="object-cover"
-                      unoptimized
-                    />
-                  </div>
-                  <div className="p-2">
-                    <p className="text-[11px] font-medium text-[#1A1A2E] line-clamp-2 leading-snug">
-                      {img.title || '（無題）'}
-                    </p>
-                  </div>
-                </button>
-              ))}
+              {filtered.map(img => {
+                const src = img.source ?? 'generated'
+                const url = `/api/images/file/${img.id}?source=${src}`
+                return (
+                  <button
+                    key={img.id}
+                    type="button"
+                    onClick={() => onSelect(img)}
+                    className="rounded-lg overflow-hidden border border-[#E2E8F0] hover:border-[#009AE0] hover:shadow-md transition-all text-left group"
+                  >
+                    <div className="relative aspect-video bg-[#F1F5F9]">
+                      <Image
+                        src={url}
+                        alt={img.title || img.filename || 'image'}
+                        fill
+                        sizes="200px"
+                        className="object-cover"
+                        unoptimized
+                      />
+                      <span
+                        className={`absolute top-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                          src === 'imported' ? 'bg-purple-600 text-white' : 'bg-[#009AE0] text-white'
+                        }`}
+                      >
+                        {src === 'imported' ? 'インポート' : 'AI生成'}
+                      </span>
+                    </div>
+                    <div className="p-2">
+                      <p className="text-[11px] font-medium text-[#1A1A2E] line-clamp-2 leading-snug">
+                        {img.title || img.filename || '（無題）'}
+                      </p>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>

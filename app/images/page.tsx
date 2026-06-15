@@ -1,15 +1,19 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Image from 'next/image'
-import { ImageIcon, Trash2, Calendar, Search, Download } from 'lucide-react'
+import { ImageIcon, Trash2, Calendar, Search, Download, Upload, X, Sparkles } from 'lucide-react'
 
-interface GeneratedImageMeta {
+type ImageSource = 'generated' | 'imported'
+
+interface ImageMeta {
   id: string
   key: string
+  source: ImageSource
   title: string
-  targetKeyword: string
-  prompt: string
+  targetKeyword?: string
+  filename?: string
+  prompt?: string
   createdAt: string
 }
 
@@ -19,70 +23,130 @@ function formatDate(iso: string): string {
   try {
     const d = new Date(iso)
     return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}`
-  } catch {
-    return ''
-  }
+  } catch { return '' }
+}
+
+function imageUrl(img: ImageMeta): string {
+  return `/api/images/file/${img.id}?source=${img.source}`
 }
 
 export default function ImagesPage() {
-  const [images, setImages] = useState<GeneratedImageMeta[]>([])
+  const [tab, setTab] = useState<'all' | ImageSource>('all')
+  const [images, setImages] = useState<ImageMeta[]>([])
   const [mounted, setMounted] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
-  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ImageMeta | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [importTitle, setImportTitle] = useState('')
+  const [dragOver, setDragOver] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const reload = async () => {
+  const reload = useCallback(async () => {
     try {
-      const res = await fetch('/api/images', { cache: 'no-store' })
+      const res = await fetch('/api/images?source=all', { cache: 'no-store' })
       const data = await res.json()
       if (Array.isArray(data?.images)) setImages(data.images)
-    } catch {
-      /* ignore */
-    }
-  }
-
-  useEffect(() => {
-    reload().then(() => setMounted(true))
+    } catch { /* ignore */ }
   }, [])
 
   useEffect(() => {
+    reload().then(() => setMounted(true))
+  }, [reload])
+
+  useEffect(() => {
     setVisibleCount(PAGE_SIZE)
-  }, [searchQuery])
+  }, [searchQuery, tab])
+
+  const handleImport = useCallback(async (fileList: FileList | null) => {
+    if (!fileList?.length) return
+    const file = fileList[0]!
+    setImporting(true)
+    setImportError(null)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('title', importTitle || file.name.replace(/\.[^.]+$/, ''))
+      const res = await fetch('/api/images/import', { method: 'POST', body: form })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'インポートに失敗しました')
+      setImportTitle('')
+      await reload()
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : 'インポートに失敗しました')
+    } finally {
+      setImporting(false)
+    }
+  }, [importTitle, reload])
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    handleImport(e.target.files)
+    e.target.value = ''
+  }, [handleImport])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    handleImport(e.dataTransfer.files)
+  }, [handleImport])
 
   const handleDeleteConfirmed = async () => {
-    if (!deleteTargetId) return
+    if (!deleteTarget) return
     try {
       await fetch('/api/images', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: deleteTargetId }),
+        body: JSON.stringify({ id: deleteTarget.id, source: deleteTarget.source }),
       })
-    } catch {
-      /* ignore */
-    }
-    setDeleteTargetId(null)
+    } catch { /* ignore */ }
+    setDeleteTarget(null)
     await reload()
   }
 
   const filtered = useMemo(() => {
+    let list = images
+    if (tab !== 'all') list = list.filter(img => img.source === tab)
     const q = searchQuery.trim().toLowerCase()
-    if (!q) return images
-    return images.filter(img => {
-      const title = (img.title || '').toLowerCase()
-      const kw = (img.targetKeyword || '').toLowerCase()
-      return title.includes(q) || kw.includes(q)
-    })
-  }, [images, searchQuery])
+    if (q) {
+      list = list.filter(img => {
+        const t = (img.title || '').toLowerCase()
+        const kw = (img.targetKeyword || '').toLowerCase()
+        const fn = (img.filename || '').toLowerCase()
+        return t.includes(q) || kw.includes(q) || fn.includes(q)
+      })
+    }
+    return list
+  }, [images, tab, searchQuery])
 
   const visible = filtered.slice(0, visibleCount)
+  const generatedCount = images.filter(i => i.source === 'generated').length
+  const importedCount = images.filter(i => i.source === 'imported').length
+
+  const TABS = [
+    { key: 'all' as const, label: 'すべて', count: images.length },
+    { key: 'generated' as const, label: '生成済み', count: generatedCount },
+    { key: 'imported' as const, label: 'インポート済み', count: importedCount },
+  ]
 
   return (
-    <div className="w-full max-w-6xl mx-auto">
+    <div
+      className="w-full max-w-6xl mx-auto"
+      onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={handleDrop}
+    >
+      {dragOver && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#009AE0]/10 border-4 border-dashed border-[#009AE0] pointer-events-none">
+          <p className="text-[#009AE0] text-xl font-bold drop-shadow">画像をドロップしてインポート</p>
+        </div>
+      )}
+
       {/* ヘッダー */}
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+      <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
         <div className="flex items-center gap-3">
           <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center"
+            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
             style={{
               background: 'linear-gradient(135deg, #0056A0 0%, #009AE0 60%, #33C0F0 100%)',
               boxShadow: '0 2px 10px rgba(0,154,224,0.30)',
@@ -92,20 +156,85 @@ export default function ImagesPage() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-[#1A1A2E]">画像ライブラリ</h1>
-            <p className="text-sm text-[#64748B]">RAS で生成した画像の一覧（クリックでダウンロード）</p>
+            <p className="text-sm text-[#64748B]">生成・インポートした画像を保存。記事作成時に再利用できます。</p>
           </div>
         </div>
 
-        <div className="relative">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* タイトル入力（インポート前に任意で設定） */}
           <input
             type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="タイトル・キーワードで検索"
-            className="pl-9 pr-4 py-2 rounded-lg text-sm border border-[#D0E3F0] bg-white text-[#1A1A2E] focus:outline-none focus:ring-2 focus:ring-[#009AE0]/30 w-64"
+            value={importTitle}
+            onChange={e => setImportTitle(e.target.value)}
+            placeholder="画像タイトル（任意）"
+            className="px-3 py-2 text-sm rounded-lg border border-[#D0E3F0] bg-white text-[#1A1A2E] focus:outline-none focus:ring-2 focus:ring-[#009AE0]/30 w-44"
           />
+
+          {/* インポートボタン */}
+          <div className="relative">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              onChange={handleFileChange}
+              disabled={importing}
+            />
+            <button
+              type="button"
+              disabled={importing}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60 whitespace-nowrap"
+              style={{
+                background: 'linear-gradient(135deg, #0056A0 0%, #009AE0 60%, #33C0F0 100%)',
+                boxShadow: '0 2px 8px rgba(0,154,224,0.30)',
+              }}
+            >
+              <Upload size={15} />
+              {importing ? 'インポート中...' : '画像をインポート'}
+            </button>
+          </div>
+
+          {/* 検索 */}
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="検索..."
+              className="pl-9 pr-4 py-2 rounded-lg text-sm border border-[#D0E3F0] bg-white text-[#1A1A2E] focus:outline-none focus:ring-2 focus:ring-[#009AE0]/30 w-44"
+            />
+          </div>
         </div>
+      </div>
+
+      {importError && (
+        <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800 flex items-center gap-2">
+          <X size={15} />
+          {importError}
+          <button type="button" onClick={() => setImportError(null)} className="ml-auto text-red-400 hover:text-red-600">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* タブ */}
+      <div className="flex gap-1 border-b border-[#D0E3F0] mb-5">
+        {TABS.map(t => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            className="px-4 py-2.5 text-sm font-semibold transition-colors relative"
+            style={{ color: tab === t.key ? '#009AE0' : '#64748B' }}
+          >
+            {t.label}
+            <span className="ml-1.5 text-[11px] font-normal opacity-70">({t.count})</span>
+            {tab === t.key && (
+              <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#009AE0] rounded-t" />
+            )}
+          </button>
+        ))}
       </div>
 
       {!mounted ? (
@@ -114,57 +243,22 @@ export default function ImagesPage() {
         <div className="text-center py-20">
           <ImageIcon size={40} className="mx-auto text-[#CBD5E1] mb-3" />
           <p className="text-[#64748B] text-sm">
-            まだ生成画像がありません。記事作成の画像生成フェーズで画像を生成すると、ここに保存されます。
+            {tab === 'imported'
+              ? '画像をアップロード（またはドラッグ＆ドロップ）してインポートできます。'
+              : tab === 'generated'
+              ? 'まだ生成画像がありません。記事作成の画像生成フェーズで生成してください。'
+              : '画像がありません。記事作成で生成するか、右上からインポートしてください。'}
           </p>
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {visible.map(img => (
-              <div
+              <ImageCard
                 key={img.id}
-                className="rounded-xl overflow-hidden bg-white border border-[#E2E8F0] hover:shadow-lg transition-shadow group"
-              >
-                <a
-                  href={`/api/images/file/${img.id}`}
-                  download={`${img.id}.jpg`}
-                  className="block relative aspect-video bg-[#F1F5F9]"
-                >
-                  <Image
-                    src={`/api/images/file/${img.id}`}
-                    alt={img.title || 'generated image'}
-                    fill
-                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                    className="object-cover"
-                    unoptimized
-                  />
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                    <Download size={24} className="text-white drop-shadow" />
-                  </div>
-                </a>
-                <div className="p-3">
-                  <p className="text-xs font-semibold text-[#1A1A2E] line-clamp-2 leading-snug mb-1.5">
-                    {img.title || '（無題）'}
-                  </p>
-                  {img.targetKeyword && (
-                    <p className="text-[11px] text-[#0080C0] truncate mb-1.5">{img.targetKeyword}</p>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1 text-[11px] text-[#94A3B8]">
-                      <Calendar size={11} />
-                      {formatDate(img.createdAt)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setDeleteTargetId(img.id)}
-                      className="text-[#CBD5E1] hover:text-red-500 transition-colors"
-                      aria-label="削除"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              </div>
+                img={img}
+                onDelete={() => setDeleteTarget(img)}
+              />
             ))}
           </div>
 
@@ -182,11 +276,11 @@ export default function ImagesPage() {
         </>
       )}
 
-      {/* 削除確認ダイアログ */}
-      {deleteTargetId && (
+      {/* 削除確認 */}
+      {deleteTarget && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/45 backdrop-blur-sm p-4"
-          onClick={() => setDeleteTargetId(null)}
+          onClick={() => setDeleteTarget(null)}
         >
           <div
             className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6"
@@ -197,7 +291,7 @@ export default function ImagesPage() {
             <div className="flex gap-3 justify-end">
               <button
                 type="button"
-                onClick={() => setDeleteTargetId(null)}
+                onClick={() => setDeleteTarget(null)}
                 className="px-4 py-2 rounded-lg text-sm font-semibold text-[#0A2540] border border-[#D0E3F0] hover:bg-[#F0F7FC]"
               >
                 キャンセル
@@ -213,6 +307,63 @@ export default function ImagesPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function ImageCard({ img, onDelete }: { img: ImageMeta; onDelete: () => void }) {
+  const url = imageUrl(img)
+  return (
+    <div className="rounded-xl overflow-hidden bg-white border border-[#E2E8F0] hover:shadow-lg transition-shadow group">
+      <a
+        href={url}
+        download={img.filename || `${img.id}.jpg`}
+        className="block relative aspect-video bg-[#F1F5F9]"
+      >
+        <Image
+          src={url}
+          alt={img.title || 'image'}
+          fill
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+          className="object-cover"
+          unoptimized
+        />
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+          <Download size={22} className="text-white drop-shadow" />
+        </div>
+        {/* sourceバッジ */}
+        <span
+          className={`absolute top-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded ${
+            img.source === 'imported'
+              ? 'bg-purple-600 text-white'
+              : 'bg-[#009AE0] text-white'
+          }`}
+        >
+          {img.source === 'imported' ? 'インポート' : 'AI生成'}
+        </span>
+      </a>
+      <div className="p-2.5">
+        <p className="text-[11px] font-semibold text-[#1A1A2E] line-clamp-2 leading-snug mb-1">
+          {img.title || img.filename || '（無題）'}
+        </p>
+        {img.targetKeyword && (
+          <p className="text-[10px] text-[#0080C0] truncate mb-1">{img.targetKeyword}</p>
+        )}
+        <div className="flex items-center justify-between">
+          <span className="flex items-center gap-1 text-[10px] text-[#94A3B8]">
+            <Calendar size={10} />
+            {formatDate(img.createdAt)}
+          </span>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="text-[#CBD5E1] hover:text-red-500 transition-colors"
+            aria-label="削除"
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
