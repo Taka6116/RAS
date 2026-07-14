@@ -123,22 +123,56 @@ function parseRetryDelaySeconds(detail: string): number | null {
 }
 
 /**
+ * ストリーミング生成時のイベント通知。
+ * onChunk: 生成テキストの断片を受け取る
+ * onReset: モデル切り替え・再試行で出力をやり直すとき（受信側はバッファを破棄する）
+ */
+export interface StreamHandlers {
+  onChunk: (text: string) => void
+  onReset: () => void
+}
+
+/**
  * 指定プロンプトで generateContent を実行する。
  * 429（クォータ・分間トークン上限）時は API が示す秒数だけ待って同一モデルを再試行し、
  * それでもダメなら次モデルへ（現状は1モデルのみ）。
+ * streamHandlers を渡すと generateContentStream で断片を逐次通知する。
  */
-async function generateContentWithFallback(apiKey: string, prompt: string): Promise<string> {
+async function generateContentWithFallback(
+  apiKey: string,
+  prompt: string,
+  streamHandlers?: StreamHandlers
+): Promise<string> {
   const genAI = new GoogleGenerativeAI(apiKey)
   const maxQuotaRetriesPerModel = 2
   let lastError: Error | null = null
   let lastDetail = ''
   let geminiSoftFail = false
   let goToBedrock = false
+  let emittedAny = false
 
   modelLoop: for (const modelId of GEMINI_MODELS) {
     for (let attempt = 0; attempt < maxQuotaRetriesPerModel; attempt++) {
       try {
         const model = genAI.getGenerativeModel({ model: modelId })
+        if (streamHandlers) {
+          if (emittedAny) {
+            streamHandlers.onReset()
+            emittedAny = false
+          }
+          const result = await model.generateContentStream(prompt)
+          let full = ''
+          for await (const chunk of result.stream) {
+            const t = chunk.text()
+            if (t) {
+              full += t
+              emittedAny = true
+              streamHandlers.onChunk(t)
+            }
+          }
+          if (!full.trim()) throw new Error(`空の応答が返されました (model=${modelId})`)
+          return full
+        }
         const result = await model.generateContent(prompt)
         return result.response.text()
       } catch (e) {
@@ -195,8 +229,11 @@ async function generateContentWithFallback(apiKey: string, prompt: string): Prom
   if (geminiSoftFail) {
     try {
       console.log('[Gemini→Bedrock] Claude へフォールバック中...')
+      if (streamHandlers && emittedAny) streamHandlers.onReset()
       const result = await callClaudeOnBedrock(prompt)
       console.log('[Gemini→Bedrock] Claude 成功')
+      // Bedrockはストリーミング未対応のため、完成テキストを一括で通知する
+      if (streamHandlers) streamHandlers.onChunk(result)
       return result
     } catch (bedrockErr) {
       const bedrockMsg = bedrockErr instanceof Error ? bedrockErr.message : String(bedrockErr)
@@ -285,7 +322,9 @@ export async function generateFirstDraftFromPrompt(
   targetKeyword?: string,
   dataContext?: string,
   /** 意味的に最も近い過去記事の抜粋。このトーン・構成・語彙の踏襲を避けるために使う */
-  avoidToneSample?: string
+  avoidToneSample?: string,
+  /** 指定すると生成テキストを逐次通知する（ストリーミングUI用） */
+  streamHandlers?: StreamHandlers
 ): Promise<FirstDraftResult> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error('GEMINI_API_KEY が設定されていません')
@@ -446,7 +485,7 @@ P（結論）→ R（理由）→ E（RICE CLOUD事例・具体例）→ P（ま
 
 - 記事の末尾に「よくある質問（FAQ）」セクションを含めること。Q. と A. の形式で5つ程度の質問と回答を作成すること。質問はターゲットキーワードに関連するユーザーの疑問を反映したものにすること。`.trim()
 
-  const raw = await generateContentWithFallback(apiKey, prompt)
+  const raw = await generateContentWithFallback(apiKey, prompt, streamHandlers)
 
   let text = raw
     .replace(/\*\*(.+?)\*\*/g, '$1')

@@ -34,7 +34,9 @@ export default function ArticleInput({
   const [prompt, setPrompt] = useState('')
   const [generating, setGenerating] = useState(false)
   const [generatingStep, setGeneratingStep] = useState<string>('loading')
+  const [streamPreview, setStreamPreview] = useState('')
   const [draftError, setDraftError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
   const [savedPrompts, setSavedPrompts] = useState<SavedPrompt[]>([])
   const [savedKeywords, setSavedKeywords] = useState<SavedKeyword[]>([])
   const [showPromptDropdown, setShowPromptDropdown] = useState(false)
@@ -131,10 +133,13 @@ export default function ArticleInput({
     setDraftError(null)
     setGenerating(true)
     setGeneratingStep('loading')
+    setStreamPreview('')
+    const controller = new AbortController()
+    abortRef.current = controller
     try {
       // 資料読み込み（今回は即時切り替えでもよいが少し見せるため待機）
       await new Promise(resolve => setTimeout(resolve, 800))
-      
+
       setGeneratingStep('writing')
       const res = await fetch('/api/gemini/draft', {
         method: 'POST',
@@ -143,22 +148,93 @@ export default function ArticleInput({
           prompt: trimmed,
           targetKeyword: article.targetKeyword ?? '',
         }),
+        signal: controller.signal,
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || '一次執筆の生成に失敗しました')
-      
+
+      if (!res.ok) {
+        // エラーはJSONとは限らない（ゲートウェイの504はHTML/テキストを返す）
+        let message = `一次執筆の生成に失敗しました（HTTP ${res.status}）`
+        try {
+          const data = await res.json()
+          if (data?.error) message = data.error
+        } catch {
+          if (res.status === 504) {
+            message = '生成がタイムアウトしました。時間をおいて再度お試しください。'
+          }
+        }
+        throw new Error(message)
+      }
+
+      const contentType = res.headers.get('content-type') ?? ''
+      let title = ''
+      let content = ''
+
+      if (contentType.includes('ndjson') && res.body) {
+        // NDJSONストリーミング: 生成テキストを逐次表示しながら完了イベントを待つ
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let accumulated = ''
+        let finished = false
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+          for (const line of lines) {
+            if (!line.trim()) continue
+            let event: { type?: string; text?: string; title?: string; content?: string; error?: string }
+            try {
+              event = JSON.parse(line)
+            } catch {
+              continue
+            }
+            if (event.type === 'chunk' && typeof event.text === 'string') {
+              accumulated += event.text
+              setStreamPreview(accumulated)
+            } else if (event.type === 'reset') {
+              accumulated = ''
+              setStreamPreview('')
+            } else if (event.type === 'done') {
+              title = typeof event.title === 'string' ? event.title.trim() : ''
+              content = typeof event.content === 'string' ? event.content : ''
+              finished = true
+            } else if (event.type === 'error') {
+              throw new Error(event.error || '一次執筆の生成に失敗しました')
+            }
+          }
+        }
+        if (!finished) throw new Error('生成が中断されました。再度お試しください。')
+      } else {
+        // 旧形式（JSON一括）へのフォールバック
+        const data = await res.json()
+        title = typeof data.title === 'string' ? data.title.trim() : ''
+        content = typeof data.content === 'string' ? data.content : ''
+      }
+
       setGeneratingStep('done')
       await new Promise(resolve => setTimeout(resolve, 600))
-      
-      const title = typeof data.title === 'string' ? data.title.trim() : ''
-      const content = typeof data.content === 'string' ? data.content : ''
+
       if (title) onTitleChange(title)
       if (content) onContentChange(content)
       setGenerating(false)
     } catch (e) {
-      setDraftError(e instanceof Error ? e.message : '一次執筆の生成に失敗しました')
-      setGenerating(false)
+      if (controller.signal.aborted) {
+        // ユーザーによるキャンセル: エラー表示なしで閉じる
+        setGenerating(false)
+      } else {
+        setDraftError(e instanceof Error ? e.message : '一次執筆の生成に失敗しました')
+        setGenerating(false)
+      }
+    } finally {
+      abortRef.current = null
+      setStreamPreview('')
     }
+  }
+
+  const handleCancelGenerate = () => {
+    abortRef.current?.abort()
   }
 
   const handleClear = () => {
@@ -175,7 +251,13 @@ export default function ArticleInput({
         <div className="flex-1 min-w-0 flex flex-col gap-5">
           <Card className="relative overflow-hidden">
             {/* 生成中のローディングオーバーレイ */}
-            {generating && <GeneratingLoader step={generatingStep} />}
+            {generating && (
+              <GeneratingLoader
+                step={generatingStep}
+                previewText={streamPreview}
+                onCancel={handleCancelGenerate}
+              />
+            )}
 
             <div className="flex items-center justify-between mb-5">
               <div>
@@ -438,10 +520,24 @@ function checklistActiveHint(
   return '処理しています…'
 }
 
-function GeneratingLoader({ step }: { step: string }) {
+/** 一次執筆の想定文字数（進捗計算の分母。本文2500〜3500字＋FAQを想定） */
+const EXPECTED_DRAFT_CHARS = 3800
+
+function GeneratingLoader({
+  step,
+  previewText,
+  onCancel,
+}: {
+  step: string
+  previewText: string
+  onCancel?: () => void
+}) {
   const [progress, setProgress] = useState(0)
   const [loadingPhase, setLoadingPhase] = useState(0)
   const [reduceMotion, setReduceMotion] = useState(false)
+  const previewLenRef = useRef(0)
+  previewLenRef.current = previewText.length
+  const previewScrollRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -468,18 +564,32 @@ function GeneratingLoader({ step }: { step: string }) {
 
   useEffect(() => {
     if (step !== 'writing') return
-    let currentProgress = 8
-    setProgress(currentProgress)
+    // 実際に生成された文字数ベースの進捗を主軸にし、
+    // チャンクが届かない間だけ時間ベースでゆっくり補間する（96%で頭打ち）
+    let simulated = 8
+    setProgress(simulated)
     const timer = setInterval(() => {
-      currentProgress += (96 - currentProgress) * 0.03
-      setProgress(Math.min(96, Math.floor(currentProgress)))
-    }, 500)
+      simulated += (60 - simulated) * 0.02
+      const charBased = previewLenRef.current > 0
+        ? 12 + Math.min(84, (previewLenRef.current / EXPECTED_DRAFT_CHARS) * 84)
+        : 0
+      setProgress(prev => {
+        const next = Math.min(96, Math.floor(Math.max(simulated, charBased)))
+        return Math.max(prev, next)
+      })
+    }, 400)
     return () => clearInterval(timer)
   }, [step])
 
   useEffect(() => {
     if (step === 'done') setProgress(100)
   }, [step])
+
+  // 生成テキストのプレビューを常に最下部へスクロール
+  useEffect(() => {
+    const el = previewScrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [previewText])
 
   return (
     <div
@@ -540,6 +650,22 @@ function GeneratingLoader({ step }: { step: string }) {
             <span>仕上げ</span>
           </div>
         </div>
+
+        {/* 生成中の本文プレビュー（ストリーミング） */}
+        {previewText && (
+          <div className="mb-6">
+            <p className="text-[10px] tracking-[0.08em] font-semibold uppercase text-[#94A3B8] mb-1.5">
+              生成中の本文（{previewText.length.toLocaleString()}文字）
+            </p>
+            <div
+              ref={previewScrollRef}
+              className="max-h-40 overflow-y-auto rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3.5 py-3 text-xs leading-relaxed text-[#475569] whitespace-pre-wrap"
+            >
+              {previewText}
+              <span className="inline-block w-1.5 h-3.5 ml-0.5 align-middle bg-[#009AE0] animate-pulse" aria-hidden />
+            </div>
+          </div>
+        )}
 
         <ul className="space-y-2 mb-6 list-none p-0 m-0">
           {GENERATING_CHECKLIST.map((item, i) => {
@@ -638,9 +764,9 @@ function GeneratingLoader({ step }: { step: string }) {
           </div>
           <button
             type="button"
-            disabled
-            className="text-[11px] font-semibold tracking-wide text-[#94A3B8] cursor-not-allowed"
-            title="現在はキャンセルできません"
+            onClick={onCancel}
+            disabled={!onCancel || step === 'done'}
+            className="text-[11px] font-semibold tracking-wide text-[#64748B] hover:text-[#DC2626] transition-colors disabled:text-[#CBD5E1] disabled:cursor-not-allowed"
           >
             生成をキャンセル
           </button>

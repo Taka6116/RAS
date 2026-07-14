@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { refineArticleWithGemini, generateSlugFromGemini } from '@/lib/api/gemini'
 
+/** 推敲＋スラッグ生成はリトライ込みで長時間かかることがあるため延長（Proプラン上限） */
+export const maxDuration = 300
+
 export async function POST(request: NextRequest) {
   try {
     const { title, content, targetKeyword } = await request.json()

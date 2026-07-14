@@ -32,8 +32,8 @@ function isDraftMaterialKey(key: string, prefix: string): boolean {
   return DRAFT_MATERIAL_EXTS.has(ext)
 }
 
-/** 429 時の待機＋再生成を含められるよう長めに（プランにより上限は異なります） */
-export const maxDuration = 120
+/** 429 時の待機＋再生成を含められるよう長めに（Proプラン上限。長文生成＋リトライで120秒を超え504になるため延長） */
+export const maxDuration = 300
 
 const TEXT_MIMES = new Set([
   'text/plain',
@@ -191,13 +191,45 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { title, content } = await generateFirstDraftFromPrompt(
-      promptStr,
-      targetKeywordStr,
-      dataContext || undefined,
-      avoidToneSample
-    )
-    return NextResponse.json({ title, content })
+    // NDJSONストリーミングで返す。
+    // 生成テキストを逐次配信することでUI側に進捗を見せられるほか、
+    // 無応答が続くことによるプロキシ/ゲートウェイの504を防ぐ。
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const send = (obj: Record<string, unknown>) => {
+          controller.enqueue(encoder.encode(`${JSON.stringify(obj)}\n`))
+        }
+        try {
+          const { title, content } = await generateFirstDraftFromPrompt(
+            promptStr,
+            targetKeywordStr,
+            dataContext || undefined,
+            avoidToneSample,
+            {
+              onChunk: text => send({ type: 'chunk', text }),
+              onReset: () => send({ type: 'reset' }),
+            }
+          )
+          send({ type: 'done', title, content })
+        } catch (error) {
+          console.error('Gemini draft API error:', error)
+          const message =
+            error instanceof Error ? error.message : '一次執筆の生成に失敗しました'
+          send({ type: 'error', error: message })
+        } finally {
+          controller.close()
+        }
+      },
+    })
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'application/x-ndjson; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        'X-Accel-Buffering': 'no',
+      },
+    })
   } catch (error) {
     console.error('Gemini draft API error:', error)
     const message =
