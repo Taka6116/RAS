@@ -90,6 +90,11 @@ const PRIORITY_STYLE: Record<string, { bg: string; color: string; bar: number }>
 }
 
 const PERSONA_COLORS = ['#009AE0', '#E67E22', '#0f9f6e', '#8b5cf6', '#db2777']
+const PERSONA_PHOTOS = [
+  '/personas/persona-erp-modernization.png',
+  '/personas/persona-growth-operations.png',
+  '/personas/persona-recovery-pmo.png',
+] as const
 
 /** ジャーニーのフェーズ名からアイコンを推定 */
 function phaseIcon(phase: string): LucideIcon {
@@ -115,7 +120,7 @@ function avatarChar(name: string): string {
   return afterDot.trim().charAt(0) || '人'
 }
 
-function PersonaAvatar({ name, color, size }: { name: string; color: string; size: number }) {
+function PersonaAvatar({ name, color, size, photo }: { name: string; color: string; size: number; photo?: string }) {
   return (
     <div
       className="rounded-full flex items-center justify-center flex-shrink-0 font-bold text-white"
@@ -127,7 +132,13 @@ function PersonaAvatar({ name, color, size }: { name: string; color: string; siz
         boxShadow: `0 3px 10px ${withAlpha(color, 0.35)}`,
       }}
     >
-      {avatarChar(name)}
+      {photo ? (
+        <img
+          src={photo}
+          alt={`${name}のイメージ`}
+          className="h-full w-full rounded-full object-cover"
+        />
+      ) : avatarChar(name)}
     </div>
   )
 }
@@ -300,7 +311,7 @@ export default function PersonasPage() {
                     boxShadow: isActive ? `0 3px 10px ${withAlpha(color, 0.35)}` : 'none',
                   }}
                 >
-                  <PersonaAvatar name={p.name} color={color} size={32} />
+                  <PersonaAvatar name={p.name} color={color} size={32} photo={PERSONA_PHOTOS[i]} />
                   {p.name}
                 </button>
               )
@@ -315,7 +326,7 @@ export default function PersonasPage() {
             >
               {/* プロフィールヘッダー */}
               <div className="flex flex-col sm:flex-row gap-5 pb-5 mb-5" style={{ borderBottom: `2px solid ${withAlpha(activeColor, 0.2)}` }}>
-                <PersonaAvatar name={active.name} color={activeColor} size={112} />
+                <PersonaAvatar name={active.name} color={activeColor} size={112} photo={PERSONA_PHOTOS[activeIdx]} />
                 <div className="flex-1 min-w-0">
                   <h2 className="text-lg font-bold mb-1" style={{ color: activeColor }}>{active.name}</h2>
                   <p className="text-sm mb-3" style={{ color: INK }}>{active.tagline}</p>
