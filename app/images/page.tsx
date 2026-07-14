@@ -38,9 +38,11 @@ export default function ImagesPage() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [deleteTarget, setDeleteTarget] = useState<ImageMeta | null>(null)
   const [importing, setImporting] = useState(false)
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const [importTitle, setImportTitle] = useState('')
   const [dragOver, setDragOver] = useState(false)
+  const dragCounterRef = useRef(0)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const reload = useCallback(async () => {
@@ -59,24 +61,41 @@ export default function ImagesPage() {
     setVisibleCount(PAGE_SIZE)
   }, [searchQuery, tab])
 
-  const handleImport = useCallback(async (fileList: FileList | null) => {
-    if (!fileList?.length) return
-    const file = fileList[0]!
+  const handleImport = useCallback(async (fileList: FileList | Iterable<File> | null) => {
+    if (!fileList) return
+    const files = Array.from(fileList).filter(f => f.type.startsWith('image/'))
+    if (files.length === 0) return
+
     setImporting(true)
     setImportError(null)
+    setImportProgress({ done: 0, total: files.length })
+    const failedNames: string[] = []
+
     try {
-      const form = new FormData()
-      form.append('file', file)
-      form.append('title', importTitle || file.name.replace(/\.[^.]+$/, ''))
-      const res = await fetch('/api/images/import', { method: 'POST', body: form })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || 'インポートに失敗しました')
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i]!
+        try {
+          const form = new FormData()
+          form.append('file', file)
+          // 複数枚まとめてドロップした場合は各ファイル名を使う（指定タイトルは1枚の時のみ適用）
+          form.append('title', (files.length === 1 && importTitle) || file.name.replace(/\.[^.]+$/, ''))
+          const res = await fetch('/api/images/import', { method: 'POST', body: form })
+          const data = await res.json()
+          if (!res.ok) throw new Error(data?.error || 'インポートに失敗しました')
+        } catch {
+          failedNames.push(file.name)
+        } finally {
+          setImportProgress({ done: i + 1, total: files.length })
+        }
+      }
+      if (failedNames.length > 0) {
+        setImportError(`一部の画像をインポートできませんでした: ${failedNames.join(', ')}`)
+      }
       setImportTitle('')
       await reload()
-    } catch (e) {
-      setImportError(e instanceof Error ? e.message : 'インポートに失敗しました')
     } finally {
       setImporting(false)
+      setImportProgress(null)
     }
   }, [importTitle, reload])
 
@@ -85,8 +104,21 @@ export default function ImagesPage() {
     e.target.value = ''
   }, [handleImport])
 
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    dragCounterRef.current += 1
+    setDragOver(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
+    if (dragCounterRef.current === 0) setDragOver(false)
+  }, [])
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
+    dragCounterRef.current = 0
     setDragOver(false)
     handleImport(e.dataTransfer.files)
   }, [handleImport])
@@ -132,13 +164,14 @@ export default function ImagesPage() {
   return (
     <div
       className="w-full max-w-6xl mx-auto"
-      onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-      onDragLeave={() => setDragOver(false)}
+      onDragEnter={handleDragEnter}
+      onDragOver={e => e.preventDefault()}
+      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       {dragOver && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#009AE0]/10 border-4 border-dashed border-[#009AE0] pointer-events-none">
-          <p className="text-[#009AE0] text-xl font-bold drop-shadow">画像をドロップしてインポート</p>
+          <p className="text-[#009AE0] text-xl font-bold drop-shadow">ここに画像をドロップしてインポート（複数可）</p>
         </div>
       )}
 
@@ -170,12 +203,13 @@ export default function ImagesPage() {
             className="px-3 py-2 text-sm rounded-lg border border-[#D0E3F0] bg-white text-[#1A1A2E] focus:outline-none focus:ring-2 focus:ring-[#009AE0]/30 w-44"
           />
 
-          {/* インポートボタン */}
+          {/* インポートボタン（クリック選択・複数可） */}
           <div className="relative">
             <input
               ref={fileInputRef}
               type="file"
               accept="image/*"
+              multiple
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               onChange={handleFileChange}
               disabled={importing}
@@ -190,7 +224,9 @@ export default function ImagesPage() {
               }}
             >
               <Upload size={15} />
-              {importing ? 'インポート中...' : '画像をインポート'}
+              {importing && importProgress
+                ? `インポート中... (${importProgress.done}/${importProgress.total})`
+                : '画像をインポート'}
             </button>
           </div>
 
@@ -207,6 +243,10 @@ export default function ImagesPage() {
           </div>
         </div>
       </div>
+
+      <p className="mb-4 text-xs text-[#94A3B8]">
+        このページ上に画像ファイルをドラッグ＆ドロップしてもインポートできます（複数枚まとめて可）。
+      </p>
 
       {importError && (
         <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800 flex items-center gap-2">
@@ -244,10 +284,10 @@ export default function ImagesPage() {
           <ImageIcon size={40} className="mx-auto text-[#CBD5E1] mb-3" />
           <p className="text-[#64748B] text-sm">
             {tab === 'imported'
-              ? '画像をアップロード（またはドラッグ＆ドロップ）してインポートできます。'
+              ? '画像をアップロード、またはこのページにドラッグ＆ドロップ（複数可）してインポートできます。'
               : tab === 'generated'
               ? 'まだ生成画像がありません。記事作成の画像生成フェーズで生成してください。'
-              : '画像がありません。記事作成で生成するか、右上からインポートしてください。'}
+              : '画像がありません。記事作成で生成するか、右上からインポート・ドラッグ＆ドロップしてください。'}
           </p>
         </div>
       ) : (
