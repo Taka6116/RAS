@@ -159,6 +159,19 @@ function formatContent(content: string, settings: SiteSettings): string {
       continue
     }
 
+    // マークダウン見出しマーカー（## / ###）は正規化漏れの保険として直接変換する
+    const markerMatch = trimmed.match(/^(#{1,6})\s*(.+)$/)
+    if (markerMatch) {
+      flushParagraph()
+      const text = markerMatch[2]!.replace(/\*\*/g, '').trim()
+      if (markerMatch[1]!.length >= 3) {
+        htmlLines.push(`<h3 style="${H3_STYLE}">${applyInlineFormatting(text)}</h3>`)
+      } else {
+        htmlLines.push(`<h2 style="${H2_STYLE}">${applyInlineFormatting(text)}</h2>`)
+      }
+      continue
+    }
+
     const numbered = parseNumberedHeading(trimmed)
     if (numbered && currentParagraph.length === 0) {
       const text = numbered.text.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*\*/g, '')

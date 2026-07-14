@@ -290,7 +290,7 @@ function emphasizeListLabel(line: string): string {
 
 /** プレビューと同一の見出し・本文スタイル（WordPress本文で使用） */
 const H2_STYLE = "font-size:22px;font-weight:900;margin:48px 0 16px;padding-bottom:8px;border-bottom:3px solid #009AE0;font-family:'Noto Sans JP',sans-serif;";
-const H3_STYLE = 'font-size:18px;font-weight:400;margin:32px 0 12px;color:#111;';
+const H3_STYLE = 'font-size:18px;font-weight:700;margin:32px 0 12px;color:#111;';
 const P_STYLE = 'margin-bottom:1.6em;';
 const UL_LIST_STYLE = 'list-style:none;padding-left:0;margin:16px 0;';
 const LI_LIST_STYLE = 'margin-bottom:1.2em;padding-left:1em;text-indent:-1em;';
@@ -455,6 +455,22 @@ export function convertToHtml(content: string, settings?: SiteSettings): string 
 
     if (!trimmed) {
       flushParagraph();
+      continue;
+    }
+
+    // マークダウン見出しマーカー（## / ###）は正規化漏れの保険として直接変換する
+    const markerMatch = trimmed.match(/^(#{1,6})\s*(.+)$/);
+    if (markerMatch) {
+      flushParagraph();
+      const text = markerMatch[2]!.replace(/\*\*/g, '').trim();
+      if (markerMatch[1]!.length >= 3) {
+        h3Count++;
+        htmlLines.push(`<h3 id="section-${h2Count}-${h3Count}" style="${H3}">${applyInlineFormatting(text)}</h3>`);
+      } else {
+        h2Count++;
+        h3Count = 0;
+        htmlLines.push(`<h2 id="section-${h2Count}" style="${H2}">${applyInlineFormatting(text)}</h2>`);
+      }
       continue;
     }
 

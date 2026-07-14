@@ -174,7 +174,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
 
   styles: {
     h2Css: "font-size:22px;font-weight:900;margin:48px 0 16px;padding-bottom:8px;border-bottom:3px solid #009AE0;font-family:'Noto Sans JP',sans-serif;",
-    h3Css: 'font-size:18px;font-weight:400;margin:32px 0 12px;color:#111;',
+    h3Css: 'font-size:18px;font-weight:700;margin:32px 0 12px;color:#111;',
     h4Css: 'font-size:16px;font-weight:700;margin:24px 0 10px;color:#333;',
     bodyCss: 'margin-bottom:1.6em;',
   },
@@ -187,9 +187,16 @@ export const SITE_SETTINGS_S3_KEY = 'site-settings/config.json'
 // ========== マージヘルパー ==========
 // S3から読み込んだ部分的な設定にデフォルトを補完する
 
+/** 旧デフォルトのh3（本文と同じ太さ）が保存されている場合は新デフォルト（太字）へ移行する */
+const LEGACY_H3_CSS = 'font-size:18px;font-weight:400;margin:32px 0 12px;color:#111;'
+
 export function mergeSiteSettings(partial: Partial<SiteSettings> | null | undefined): SiteSettings {
   const d = DEFAULT_SITE_SETTINGS
   if (!partial) return d
+
+  if (partial.styles?.h3Css === LEGACY_H3_CSS) {
+    partial = { ...partial, styles: { ...partial.styles, h3Css: d.styles.h3Css } }
+  }
 
   return {
     version: partial.version ?? d.version,
