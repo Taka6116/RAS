@@ -48,30 +48,39 @@ const PHASES: Record<StrategyPhase, { label: string; color: string }> = {
   decision: { label: '意思決定', color: '#e53e4f' },
 }
 
-const FUNNEL_PHASES: Record<StrategyPhase, { english: string; color: string; width: string; clipPath: string }> = {
+/**
+ * ファネル各段の形状。各段の上辺幅＝前段の下辺幅になるよう
+ * clip-path を計算してあり、段間で輪郭が自然につながる。
+ */
+const FUNNEL_PHASES: Record<StrategyPhase, {
+  english: string
+  gradient: string
+  width: string
+  clipPath: string
+}> = {
   awareness: {
     english: 'Attention',
-    color: '#70B7EE',
+    gradient: 'linear-gradient(180deg, #7CC3F0, #5FB0E8)',
     width: '100%',
-    clipPath: 'polygon(0 0, 100% 0, 90% 100%, 10% 100%)',
+    clipPath: 'polygon(0 0, 100% 0, 89.5% 100%, 10.5% 100%)',
   },
   research: {
     english: 'Interest',
-    color: '#4B9CEB',
-    width: '80%',
-    clipPath: 'polygon(0 0, 100% 0, 87.5% 100%, 12.5% 100%)',
+    gradient: 'linear-gradient(180deg, #55A4E4, #3E8FD6)',
+    width: '79%',
+    clipPath: 'polygon(0 0, 100% 0, 86.7% 100%, 13.3% 100%)',
   },
   comparison: {
     english: 'Desire',
-    color: '#3176B6',
-    width: '60%',
-    clipPath: 'polygon(0 0, 100% 0, 83.33% 100%, 16.67% 100%)',
+    gradient: 'linear-gradient(180deg, #3579BE, #2A65A6)',
+    width: '58%',
+    clipPath: 'polygon(0 0, 100% 0, 81.9% 100%, 18.1% 100%)',
   },
   decision: {
     english: 'Action',
-    color: '#1F5285',
-    width: '40%',
-    clipPath: 'polygon(0 0, 100% 0, 50% 100%)',
+    gradient: 'linear-gradient(180deg, #234F84, #1B3F6C)',
+    width: '37%',
+    clipPath: 'polygon(0 0, 100% 0, 71.6% 100%, 28.4% 100%)',
   },
 }
 
@@ -565,23 +574,54 @@ export default function CompetitiveAnalysisPage() {
 
               <div className="rounded-[16px] p-6" style={{ background: '#FFFFFF', border: '1px solid #D0E3F0' }}>
                 <div className="flex gap-2 items-center mb-4"><Users size={16} style={{ color: '#009AE0' }} /><h2 className="font-bold" style={{ color: '#1A1A2E' }}>ペルソナ × ファネル別の競争状況</h2></div>
-                <p className="text-[12px] mb-5" style={{ color: '#64748B' }}>検討段階が進むほど対象者は絞られます。各段階での自社・競合の訴求と、優先すべき打ち手を確認できます。</p>
-                <div className="mx-auto max-w-[760px]">
+                <p className="text-[12px] mb-6" style={{ color: '#64748B' }}>検討段階が進むほど対象者は絞られます。各段階での自社・競合の訴求と、優先すべき打ち手を確認できます。</p>
+                <div className="space-y-2">
                   {(['awareness', 'research', 'comparison', 'decision'] as StrategyPhase[]).map(phase => {
                     const row = report.funnelCoverage.find(item => item.phase === phase)
                     const meta = PHASES[phase]
                     const funnel = FUNNEL_PHASES[phase]
-                    return <div key={phase} className="mx-auto text-white" style={{ width: funnel.width, marginTop: phase === 'awareness' ? 0 : '-1px', clipPath: funnel.clipPath, background: funnel.color }}>
-                      <div className="min-h-[126px] px-8 py-4 flex flex-col justify-center text-center" style={{ paddingLeft: phase === 'decision' ? '20px' : undefined, paddingRight: phase === 'decision' ? '20px' : undefined }}>
-                        <p className="text-[17px] font-black leading-tight">{meta.label}</p>
-                        <p className="text-[12px] font-bold tracking-wide opacity-90">{funnel.english}</p>
-                        <div className="mt-2.5 text-[10px] leading-relaxed text-left space-y-0.5">
-                          <p><strong className="text-white/80">自社:</strong> {row?.self ?? '—'}</p>
-                          <p><strong className="text-white/80">競合:</strong> {row?.competitor ?? '—'}</p>
-                          <p className="pt-1 text-white/90"><ChevronRight size={11} className="inline -mt-0.5" />{row?.implication ?? '—'}</p>
+                    return (
+                      <div key={phase} className="flex flex-col md:flex-row md:items-stretch gap-3">
+                        {/* 左: ファネル段 */}
+                        <div className="hidden md:flex w-[280px] flex-shrink-0 items-stretch">
+                          <div
+                            className="mx-auto flex items-center justify-center text-white min-h-[108px]"
+                            style={{ width: funnel.width, clipPath: funnel.clipPath, background: funnel.gradient }}
+                          >
+                            <div className="text-center leading-tight px-2">
+                              <p className={phase === 'decision' ? 'text-[13px] font-black' : 'text-[15px] font-black'}>{meta.label}</p>
+                              <p className={`${phase === 'decision' ? 'text-[9px]' : 'text-[10px]'} font-semibold tracking-wider opacity-85 uppercase`}>{funnel.english}</p>
+                            </div>
+                          </div>
+                        </div>
+                        {/* モバイル: 段階ラベル */}
+                        <div className="md:hidden flex items-center gap-2">
+                          <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: meta.color }} />
+                          <span className="text-[13px] font-black" style={{ color: '#1A1A2E' }}>{meta.label}</span>
+                          <span className="text-[10px] font-semibold tracking-wider uppercase" style={{ color: '#94A3B8' }}>{funnel.english}</span>
+                        </div>
+                        {/* 右: 詳細カード */}
+                        <div
+                          className="flex-1 rounded-[12px] px-4 py-3.5 flex flex-col justify-center gap-1.5"
+                          style={{ background: '#FAFCFE', border: '1px solid #D0E3F0', borderLeft: `4px solid ${meta.color}` }}
+                        >
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-1.5">
+                            <p className="text-[12px] leading-relaxed">
+                              <span className="inline-block mr-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold align-[1px]" style={{ background: 'rgba(0,154,224,0.10)', color: '#0080C0' }}>自社</span>
+                              <span style={{ color: '#334155' }}>{row?.self ?? '—'}</span>
+                            </p>
+                            <p className="text-[12px] leading-relaxed">
+                              <span className="inline-block mr-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold align-[1px]" style={{ background: 'rgba(229,62,79,0.08)', color: '#e53e4f' }}>競合</span>
+                              <span style={{ color: '#334155' }}>{row?.competitor ?? '—'}</span>
+                            </p>
+                          </div>
+                          <p className="text-[12px] font-semibold leading-relaxed flex items-start gap-1" style={{ color: '#0A2540' }}>
+                            <ChevronRight size={13} className="flex-shrink-0 mt-[3px]" style={{ color: meta.color }} />
+                            {row?.implication ?? '—'}
+                          </p>
                         </div>
                       </div>
-                    </div>
+                    )
                   })}
                 </div>
               </div>
