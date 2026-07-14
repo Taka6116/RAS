@@ -110,6 +110,7 @@ ${img}
 
 type ParsedNumberedHeading = {
   level: 2 | 3 | 4 | 5
+  /** 番号込みの表示テキスト（例: 「1. 見出し」「1-1. 小見出し」） */
   text: string
 }
 
@@ -117,7 +118,7 @@ function parseNumberedHeading(trimmed: string): ParsedNumberedHeading | null {
   const m = trimmed.match(/^(\d+(?:-\d+)*)[．.]\s+(.+)$/)
   if (!m) return null
   const numbering = m[1]!
-  const text = m[2]!
+  const text = `${numbering}. ${m[2]!}`
   const depth = numbering.split('-').length
   const level = Math.min(depth + 1, 5) as 2 | 3 | 4 | 5
   return { level, text }

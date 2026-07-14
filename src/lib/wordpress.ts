@@ -324,7 +324,8 @@ function parseNumberedHeading(trimmed: string): ParsedNumberedHeading | null {
   const m = trimmed.match(/^(\d+(?:-\d+)*)[．.]\s+(.+)$/);
   if (!m) return null;
   const numbering = m[1]!;
-  const text = m[2]!;
+  // 番号込みで表示する（例: 「1. 見出し」「1-1. 小見出し」）
+  const text = `${numbering}. ${m[2]!}`;
   const depth = numbering.split('-').length;
   const level = Math.min(depth + 1, 5) as 2 | 3 | 4 | 5;
   return {
