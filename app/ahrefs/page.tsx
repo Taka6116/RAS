@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Upload, X, Search, Sparkles, Globe, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import type { AhrefsDataset, AhrefsDatasetType } from '@/lib/ahrefsCsvParser'
 import { analyzeKeywords, detectTrends, getCategoryCounts, mergeAndAnalyze, type ScoredKeyword, type TrendKeyword, type CategoryCount, type PriorityLevel } from '@/lib/ahrefsAnalyzer'
-import type { SavedArticle } from '@/lib/types'
+import type { ArticleSummary } from '@/lib/types'
 
 const PAGE_SIZE = 50
 
@@ -19,7 +19,7 @@ interface ArticleAction {
 }
 
 /** キーワード → 最新アクション情報のマップを構築する */
-function buildArticleActionMap(articles: SavedArticle[]): Map<string, ArticleAction> {
+function buildArticleActionMap(articles: ArticleSummary[]): Map<string, ArticleAction> {
   const map = new Map<string, ArticleAction>()
   // 新しい順に処理して最新アクションを記録
   const sorted = [...articles].sort(
@@ -250,11 +250,11 @@ export default function AhrefsPage() {
   // 記事一覧を取得してKW→アクション情報のマップを構築
   useEffect(() => {
     let cancelled = false
-    fetch('/api/articles', { cache: 'no-store' })
+    fetch('/api/articles?mode=summary', { cache: 'no-store' })
       .then(r => r.json())
       .then(data => {
         if (!cancelled && Array.isArray(data?.articles)) {
-          setArticleActionMap(buildArticleActionMap(data.articles as SavedArticle[]))
+          setArticleActionMap(buildArticleActionMap(data.articles as ArticleSummary[]))
         }
       })
       .catch(() => { /* ignore */ })

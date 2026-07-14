@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { listS3Objects, getS3ObjectAsText, putS3Object, deleteS3Object } from '@/lib/s3Reference'
+import { listS3Objects, getS3ObjectAsText, getS3ObjectsAsTextBatch, putS3Object, deleteS3Object } from '@/lib/s3Reference'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,16 +20,14 @@ function promptKey(id: string): string {
 export async function GET() {
   try {
     const objects = await listS3Objects(PREFIX)
-    const jsonFiles = objects.filter(o => o.key.endsWith('.json'))
+    const jsonKeys = objects.filter(o => o.key.endsWith('.json')).map(o => o.key)
 
+    const results = await getS3ObjectsAsTextBatch(jsonKeys)
     const prompts: SavedPrompt[] = []
-    for (const obj of jsonFiles) {
-      const result = await getS3ObjectAsText(obj.key)
-      if (result) {
-        try {
-          prompts.push(JSON.parse(result.content) as SavedPrompt)
-        } catch { /* skip malformed */ }
-      }
+    for (const result of results) {
+      try {
+        prompts.push(JSON.parse(result.content) as SavedPrompt)
+      } catch { /* skip malformed */ }
     }
 
     prompts.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())

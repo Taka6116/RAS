@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { SavedArticle } from '@/lib/types'
-import { getAllArticles, deleteArticle, saveArticle } from '@/lib/articleStorage'
+import { ArticleSummary } from '@/lib/types'
+import { getArticleSummaries, getArticleById, deleteArticle, patchArticle } from '@/lib/articleStorage'
 import { applyInternalLinksToText } from '@/lib/internalLinks'
 import { setSessionPreviewImage } from '@/lib/sessionPreviewImage'
 import {
@@ -36,7 +36,7 @@ type StatusFilter = 'all' | 'draft' | 'ready'
 
 export default function ArticlesPage() {
   const router = useRouter()
-  const [articles, setArticles] = useState<SavedArticle[]>([])
+  const [articles, setArticles] = useState<ArticleSummary[]>([])
   const [mounted, setMounted] = useState(false)
   const [filterOpen, setFilterOpen] = useState(false)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -45,7 +45,7 @@ export default function ArticlesPage() {
   const [visibleCount, setVisibleCount] = useState(ARTICLE_CARD_PAGE_SIZE)
 
   const reloadArticles = async () => {
-    const all = await getAllArticles()
+    const all = await getArticleSummaries()
     setArticles(all.filter(article => article.status !== 'published'))
   }
 
@@ -67,21 +67,22 @@ export default function ArticlesPage() {
   }
 
   const handleScheduleChange = async (id: string, date: string) => {
-    const all = await getAllArticles()
-    const article = all.find(a => a.id === id)
-    if (article) {
-      article.scheduledDate = date
-      await saveArticle(article)
-      await reloadArticles()
-    }
+    await patchArticle(id, { scheduledDate: date })
+    await reloadArticles()
   }
 
-  const handlePublish = (article: SavedArticle) => {
+  const handlePublish = (article: ArticleSummary) => {
     router.push(`/editor?articleId=${article.id}&step=5`)
   }
 
   const handlePreview = useCallback(
-    async (article: SavedArticle) => {
+    async (summary: ArticleSummary) => {
+      // プレビューには本文が必要なので単一記事APIでフル取得する
+      const article = await getArticleById(summary.id)
+      if (!article) {
+        alert('記事の取得に失敗しました')
+        return
+      }
       const content = applyInternalLinksToText(
         article.refinedContent || article.originalContent || '',
         []

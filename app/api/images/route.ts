@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { listS3Objects, getS3ObjectAsText, deleteS3Object } from '@/lib/s3Reference'
+import { listS3Objects, getS3ObjectAsText, getS3ObjectsAsTextBatch, deleteS3Object } from '@/lib/s3Reference'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,18 +21,16 @@ export interface GeneratedImageMeta {
 
 async function fetchImagesByPrefix(prefix: string, defaultSource: ImageSource): Promise<GeneratedImageMeta[]> {
   const objects = await listS3Objects(prefix)
-  const jsonFiles = objects.filter(o => o.key.endsWith('.json'))
+  const jsonKeys = objects.filter(o => o.key.endsWith('.json')).map(o => o.key)
+  const results = await getS3ObjectsAsTextBatch(jsonKeys)
   const images: GeneratedImageMeta[] = []
-  for (const obj of jsonFiles) {
-    const result = await getS3ObjectAsText(obj.key)
-    if (result) {
-      try {
-        const parsed = JSON.parse(result.content) as GeneratedImageMeta
-        // source フィールドがない古いデータにデフォルト値を補う
-        if (!parsed.source) parsed.source = defaultSource
-        images.push(parsed)
-      } catch { /* skip malformed */ }
-    }
+  for (const result of results) {
+    try {
+      const parsed = JSON.parse(result.content) as GeneratedImageMeta
+      // source フィールドがない古いデータにデフォルト値を補う
+      if (!parsed.source) parsed.source = defaultSource
+      images.push(parsed)
+    } catch { /* skip malformed */ }
   }
   return images
 }
@@ -42,16 +40,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const sourceFilter = searchParams.get('source') as ImageSource | 'all' | null
 
-    let images: GeneratedImageMeta[] = []
+    const wantGenerated = !sourceFilter || sourceFilter === 'all' || sourceFilter === 'generated'
+    const wantImported = !sourceFilter || sourceFilter === 'all' || sourceFilter === 'imported'
 
-    if (!sourceFilter || sourceFilter === 'all' || sourceFilter === 'generated') {
-      const generated = await fetchImagesByPrefix(GENERATED_PREFIX, 'generated')
-      images.push(...generated)
-    }
-    if (!sourceFilter || sourceFilter === 'all' || sourceFilter === 'imported') {
-      const imported = await fetchImagesByPrefix(IMPORTED_PREFIX, 'imported')
-      images.push(...imported)
-    }
+    const [generated, imported] = await Promise.all([
+      wantGenerated ? fetchImagesByPrefix(GENERATED_PREFIX, 'generated') : Promise.resolve([]),
+      wantImported ? fetchImagesByPrefix(IMPORTED_PREFIX, 'imported') : Promise.resolve([]),
+    ])
+    const images: GeneratedImageMeta[] = [...generated, ...imported]
 
     images.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     return NextResponse.json({ images })

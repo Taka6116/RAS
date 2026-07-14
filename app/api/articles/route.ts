@@ -1,31 +1,65 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { listS3Objects, getS3ObjectAsText, putS3Object, deleteS3Object } from '@/lib/s3Reference'
-import type { SavedArticle } from '@/lib/types'
+import { listS3Objects, getS3ObjectsAsTextBatch, putS3Object, deleteS3Object } from '@/lib/s3Reference'
+import type { SavedArticle, ArticleSummary } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
 const PREFIX = 'articles/'
+const EXCERPT_MAX = 140
 
 function articleKey(id: string): string {
   return `${PREFIX}${id}.json`
 }
 
-export async function GET() {
-  try {
-    const objects = await listS3Objects(PREFIX)
-    const jsonFiles = objects.filter(o => o.key.endsWith('.json'))
+function buildExcerpt(article: SavedArticle): string {
+  const raw = (article.refinedContent || article.originalContent || '').replace(/\s+/g, ' ').trim()
+  if (raw.length <= EXCERPT_MAX) return raw
+  return raw.slice(0, EXCERPT_MAX).trim() + '…'
+}
 
+/** 本文・base64画像を除いた一覧用サマリーに変換する */
+function toSummary(article: SavedArticle): ArticleSummary {
+  const isDataUrl = article.imageUrl?.startsWith('data:')
+  return {
+    id: article.id,
+    title: article.title,
+    refinedTitle: article.refinedTitle,
+    targetKeyword: article.targetKeyword,
+    status: article.status,
+    createdAt: article.createdAt,
+    scheduledDate: article.scheduledDate,
+    scheduledTime: article.scheduledTime,
+    wordpressPostStatus: article.wordpressPostStatus,
+    wordpressUrl: article.wordpressUrl,
+    slug: article.slug,
+    wordpressTags: article.wordpressTags,
+    wordCount: article.wordCount,
+    imageUrl: isDataUrl ? `/api/articles/${article.id}/image` : (article.imageUrl || ''),
+    excerpt: buildExcerpt(article),
+  }
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const summaryMode = searchParams.get('mode') === 'summary'
+
+    const objects = await listS3Objects(PREFIX)
+    const jsonKeys = objects.filter(o => o.key.endsWith('.json')).map(o => o.key)
+
+    const results = await getS3ObjectsAsTextBatch(jsonKeys)
     const articles: SavedArticle[] = []
-    for (const obj of jsonFiles) {
-      const result = await getS3ObjectAsText(obj.key)
-      if (result) {
-        try {
-          articles.push(JSON.parse(result.content) as SavedArticle)
-        } catch { /* skip malformed */ }
-      }
+    for (const result of results) {
+      try {
+        articles.push(JSON.parse(result.content) as SavedArticle)
+      } catch { /* skip malformed */ }
     }
 
     articles.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+    if (summaryMode) {
+      return NextResponse.json({ articles: articles.map(toSummary) })
+    }
     return NextResponse.json({ articles })
   } catch (e) {
     console.error('Articles GET error:', e)

@@ -58,6 +58,9 @@ export default function LayoutWithSidebar({
             { href: '/prompts',   label: 'プロンプト' },
             { href: '/keywords',  label: 'キーワード' },
             { href: '/ahrefs',    label: 'KW分析' },
+            { href: '/article-analytics',    label: '記事分析' },
+            { href: '/competitive-analysis', label: '競合分析' },
+            { href: '/personas',  label: '仮説ペルソナ' },
             { href: '/settings',  label: 'サイト設定' },
             { href: '/notice',    label: '注意書き' },
           ].map(({ href, label }) => {

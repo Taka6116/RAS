@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseAhrefsCsv } from '@/lib/ahrefsCsvParser'
 import type { AhrefsDataset } from '@/lib/ahrefsCsvParser'
-import { putS3Object, getS3ObjectAsText, deleteS3Object, listS3Objects } from '@/lib/s3Reference'
+import { putS3Object, getS3ObjectAsText, getS3ObjectsAsTextBatch, deleteS3Object, listS3Objects } from '@/lib/s3Reference'
 
 export const dynamic = 'force-dynamic'
 
@@ -97,12 +97,10 @@ export async function GET() {
       return NextResponse.json({ datasets: [], index: [] })
     }
 
+    const results = await getS3ObjectsAsTextBatch(index.map(meta => datasetKey(meta.id)), 6)
     const datasets: AhrefsDataset[] = []
-    for (const meta of index) {
-      const obj = await getS3ObjectAsText(datasetKey(meta.id))
-      if (obj) {
-        try { datasets.push(JSON.parse(obj.content)) } catch { /* skip corrupt */ }
-      }
+    for (const obj of results) {
+      try { datasets.push(JSON.parse(obj.content)) } catch { /* skip corrupt */ }
     }
 
     return NextResponse.json({ datasets, index })

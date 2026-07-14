@@ -50,6 +50,29 @@ export interface SavedArticle {
   wordCount: number
 }
 
+/**
+ * 一覧表示用の軽量サマリー。本文（originalContent/refinedContent）と
+ * base64画像を含まないため、一覧APIのレスポンスが大幅に小さくなる。
+ * imageUrl は base64 の場合 /api/articles/{id}/image プロキシURLに置換される。
+ */
+export interface ArticleSummary {
+  id: string
+  title: string
+  refinedTitle: string
+  targetKeyword: string
+  status: ArticleStatus
+  createdAt: string
+  scheduledDate?: string
+  scheduledTime?: string
+  wordpressPostStatus?: string
+  wordpressUrl?: string
+  slug?: string
+  wordpressTags?: string[]
+  wordCount: number
+  imageUrl: string
+  excerpt: string
+}
+
 export type ProcessingState = 'idle' | 'loading' | 'success' | 'error'
 
 export interface StepState {

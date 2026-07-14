@@ -1,0 +1,181 @@
+/**
+ * AWS Bedrock 経由で Claude モデルを呼び出す汎用クライアント。
+ *
+ * 競合分析・ペルソナ生成など、長文のJSON生成を行う分析系機能で使用する。
+ * RAS では推論プロファイル（us.anthropic.*）経由の Claude Sonnet 4.5 を既定とし、
+ * BEDROCK_REGION（既定 us-east-1）を使用する。
+ */
+import {
+  BedrockRuntimeClient,
+  InvokeModelCommand,
+} from '@aws-sdk/client-bedrock-runtime'
+
+const DEFAULT_PRIMARY_MODEL = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'
+const DEFAULT_FALLBACK_MODEL = 'us.anthropic.claude-3-5-sonnet-20241022-v2:0'
+const DEFAULT_REGION = 'us-east-1'
+/** anthropic InvokeModel の bedrock version（Claude 3+ 系で共通） */
+const ANTHROPIC_BEDROCK_VERSION = 'bedrock-2023-05-31'
+
+export interface ClaudeInvocationOptions {
+  /** 出力最大トークン（既定 8000） */
+  maxTokens?: number
+  /** temperature（既定 0.7） */
+  temperature?: number
+  /** system プロンプト（任意） */
+  system?: string
+}
+
+function getClaudeBedrockClient(): BedrockRuntimeClient | null {
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID?.trim()
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY?.trim()
+  if (!accessKeyId || !secretAccessKey) return null
+  const region =
+    process.env.CLAUDE_BEDROCK_REGION?.trim() ||
+    process.env.BEDROCK_REGION?.trim() ||
+    DEFAULT_REGION
+  return new BedrockRuntimeClient({
+    region,
+    credentials: { accessKeyId, secretAccessKey },
+  })
+}
+
+/** 候補モデルID（メイン → 予備） */
+function getClaudeModelCandidates(): string[] {
+  const primary = process.env.CLAUDE_BEDROCK_MODEL?.trim() || DEFAULT_PRIMARY_MODEL
+  const fallback =
+    process.env.CLAUDE_BEDROCK_MODEL_FALLBACK?.trim() || DEFAULT_FALLBACK_MODEL
+  const list = [primary]
+  if (fallback && fallback !== primary) list.push(fallback)
+  return list
+}
+
+/** foundation-model ID に対応する US クロスリージョン推論プロファイル ID を組み立てる */
+function toUsInferenceProfileId(modelId: string): string {
+  if (modelId.startsWith('us.') || modelId.startsWith('apac.') || modelId.startsWith('eu.')) {
+    return modelId
+  }
+  return `us.${modelId}`
+}
+
+interface AnthropicContentBlock {
+  type: string
+  text?: string
+}
+
+interface AnthropicInvokeResponse {
+  content?: AnthropicContentBlock[]
+  stop_reason?: string
+  usage?: { input_tokens?: number; output_tokens?: number }
+}
+
+async function invokeOnce(
+  client: BedrockRuntimeClient,
+  modelId: string,
+  prompt: string,
+  opts: ClaudeInvocationOptions,
+): Promise<string> {
+  const body = {
+    anthropic_version: ANTHROPIC_BEDROCK_VERSION,
+    max_tokens: opts.maxTokens ?? 8000,
+    temperature: opts.temperature ?? 0.7,
+    ...(opts.system ? { system: opts.system } : {}),
+    messages: [
+      {
+        role: 'user',
+        content: [{ type: 'text', text: prompt }],
+      },
+    ],
+  }
+
+  const command = new InvokeModelCommand({
+    modelId,
+    contentType: 'application/json',
+    accept: 'application/json',
+    body: new TextEncoder().encode(JSON.stringify(body)),
+  })
+
+  const response = await client.send(command)
+  const parsed = JSON.parse(
+    new TextDecoder().decode(response.body),
+  ) as AnthropicInvokeResponse
+
+  const texts = (parsed.content ?? [])
+    .filter((b) => b.type === 'text' && typeof b.text === 'string')
+    .map((b) => b.text ?? '')
+  const joined = texts.join('').trim()
+  if (!joined) {
+    throw new Error(
+      `Claude レスポンスにテキストが含まれていません (stop_reason=${parsed.stop_reason ?? 'unknown'})`,
+    )
+  }
+  return joined
+}
+
+function isAccessDeniedOrNotFound(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { name?: string; message?: string }
+  if (e.name === 'AccessDeniedException' || e.name === 'ResourceNotFoundException') {
+    return true
+  }
+  const msg = e.message ?? ''
+  return /AccessDenied|ResourceNotFound|on-demand throughput isn.?t supported|inference profile|ValidationException|end of its life|has been deprecated|no longer available|ModelNotReadyException/i.test(
+    msg,
+  )
+}
+
+/** Claude が呼び出し可能かどうかを判定する（環境変数の有無だけで判定、実呼び出しはしない） */
+export function isClaudeConfigured(): boolean {
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID?.trim()
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY?.trim()
+  return Boolean(accessKeyId && secretAccessKey)
+}
+
+/**
+ * Claude（Bedrock）で1回の Completion を生成する。
+ * 候補モデルを順に試し、foundation-model の直接呼び出しで権限が落ちたら
+ * 自動的に `us.xxx` の inference profile ID に切り替えて再試行する。
+ */
+export async function generateWithClaude(
+  prompt: string,
+  opts: ClaudeInvocationOptions = {},
+): Promise<string> {
+  if (!isClaudeConfigured()) {
+    throw new Error('AWS 認証情報が設定されていません。')
+  }
+  const client = getClaudeBedrockClient()
+  if (!client) {
+    throw new Error('Bedrock クライアントの初期化に失敗しました')
+  }
+
+  const candidates = getClaudeModelCandidates()
+  let lastError: unknown = null
+
+  for (const baseModel of candidates) {
+    const tryIds = [baseModel]
+    const asProfile = toUsInferenceProfileId(baseModel)
+    if (asProfile !== baseModel) tryIds.push(asProfile)
+
+    for (const modelId of tryIds) {
+      try {
+        console.log(`[Claude] InvokeModel try modelId=${modelId}`)
+        const text = await invokeOnce(client, modelId, prompt, opts)
+        console.log(`[Claude] success modelId=${modelId} (${text.length} chars)`)
+        return text
+      } catch (e) {
+        lastError = e
+        const err = e as { name?: string; message?: string }
+        console.warn(
+          `[Claude] failed modelId=${modelId} name=${err?.name ?? ''} msg=${(err?.message ?? '').slice(0, 240)}`,
+        )
+        if (isAccessDeniedOrNotFound(e)) {
+          continue
+        }
+        break
+      }
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Claude 呼び出しに失敗しました: ${String(lastError)}`)
+}

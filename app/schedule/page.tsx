@@ -1,9 +1,9 @@
 'use client'
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { SavedArticle } from '@/lib/types'
+import { ArticleSummary, SavedArticle } from '@/lib/types'
 import { resolveCanonicalPostSlug } from '@/lib/slugNormalize'
-import { getAllArticles, saveArticle } from '@/lib/articleStorage'
+import { getArticleSummaries, getArticleById, patchArticle } from '@/lib/articleStorage'
 import {
   ChevronLeft,
   ChevronRight,
@@ -31,7 +31,7 @@ const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
 const MONTH_NAMES = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
 
 /** カレンダー／一覧／カード共通の「投稿スケジュール段階」 */
-function getScheduleStage(article: SavedArticle): {
+function getScheduleStage(article: ArticleSummary): {
   key: string
   label: string
   color: string
@@ -61,14 +61,14 @@ function getScheduleStage(article: SavedArticle): {
   }
 }
 
-function sortKeyForScheduled(a: SavedArticle): string {
+function sortKeyForScheduled(a: ArticleSummary): string {
   const d = a.scheduledDate ?? ''
   const t = a.scheduledTime?.trim() ? a.scheduledTime! : '99:99'
   return `${d}T${t}`
 }
 
 /** 予定日時が「いま」より後か（過去の予約・送信済みは一覧から除外） */
-function getScheduledInstant(article: SavedArticle): number {
+function getScheduledInstant(article: ArticleSummary): number {
   const d = article.scheduledDate!
   if (article.scheduledTime?.trim()) {
     return new Date(`${d}T${article.scheduledTime.trim()}:00`).getTime()
@@ -77,7 +77,7 @@ function getScheduledInstant(article: SavedArticle): number {
   return new Date(y, mo - 1, day, 23, 59, 59, 999).getTime()
 }
 
-function isUpcomingScheduled(article: SavedArticle): boolean {
+function isUpcomingScheduled(article: ArticleSummary): boolean {
   if (!article.scheduledDate) return false
   return getScheduledInstant(article) > Date.now()
 }
@@ -89,7 +89,7 @@ export default function SchedulePage() {
   const [year, setYear] = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth())
   const [selectedDate, setSelectedDate] = useState(toYMD(today))
-  const [articles, setArticles] = useState<SavedArticle[]>([])
+  const [articles, setArticles] = useState<ArticleSummary[]>([])
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
   const [publishingId, setPublishingId] = useState<string | null>(null)
@@ -98,16 +98,19 @@ export default function SchedulePage() {
   const [scheduleListThisMonthOnly, setScheduleListThisMonthOnly] = useState(true)
 
   useEffect(() => {
-    getAllArticles().then(async all => {
+    getArticleSummaries().then(async all => {
       const toFix = all.filter(a => {
         if (!a.scheduledTime?.trim()) return false
         return snapScheduledTimeToQuarterHour(a.scheduledTime) !== a.scheduledTime.trim()
       })
       if (toFix.length) {
-        for (const a of toFix) {
-          a.scheduledTime = snapScheduledTimeToQuarterHour(a.scheduledTime!)
-          await saveArticle(a)
-        }
+        // 15分刻みに丸める移行処理（該当記事のみ、フィールド単位で並列更新）
+        await Promise.all(
+          toFix.map(a => {
+            a.scheduledTime = snapScheduledTimeToQuarterHour(a.scheduledTime!)
+            return patchArticle(a.id, { scheduledTime: a.scheduledTime }).catch(() => {})
+          })
+        )
       }
       setArticles(all)
       setMounted(true)
@@ -115,7 +118,7 @@ export default function SchedulePage() {
   }, [])
 
   const articlesByDate = useMemo(() => {
-    const map: Record<string, SavedArticle[]> = {}
+    const map: Record<string, ArticleSummary[]> = {}
     articles.forEach(a => {
       const d = a.scheduledDate
       if (d) {
@@ -163,10 +166,9 @@ export default function SchedulePage() {
   ]
   while (calendarCells.length % 7 !== 0) calendarCells.push(null)
 
-  const updateArticleField = async (articleId: string, updates: Partial<SavedArticle>) => {
+  const updateArticleField = async (articleId: string, updates: Partial<ArticleSummary>) => {
     setArticles(prev => prev.map(a => a.id === articleId ? { ...a, ...updates } : a))
-    const a = articles.find(x => x.id === articleId)
-    if (a) await saveArticle({ ...a, ...updates })
+    await patchArticle(articleId, updates as Partial<SavedArticle>).catch(() => {})
   }
 
   const handleScheduleChange = (articleId: string, date: string) => {
@@ -181,13 +183,19 @@ export default function SchedulePage() {
     updateArticleField(articleId, { slug: newSlug })
   }
 
-  const handleScheduledPublish = async (article: SavedArticle) => {
-    if (!article.scheduledDate || !article.scheduledTime) return
-    setPublishingId(article.id)
+  const handleScheduledPublish = async (summary: ArticleSummary) => {
+    if (!summary.scheduledDate || !summary.scheduledTime) return
+    setPublishingId(summary.id)
     setPublishResult(null)
 
     try {
-      const scheduledDate = `${article.scheduledDate}T${article.scheduledTime}:00`
+      // 投稿には本文とオリジナル画像が必要なのでフル記事を取得する
+      const article = await getArticleById(summary.id)
+      if (!article) {
+        setPublishResult({ articleId: summary.id, success: false, message: '記事の取得に失敗しました' })
+        return
+      }
+      const scheduledDate = `${summary.scheduledDate}T${summary.scheduledTime}:00`
       const content = article.refinedContent || article.originalContent || ''
 
       const res = await fetch('/api/wordpress', {
@@ -214,7 +222,7 @@ export default function SchedulePage() {
           ...(typeof data.status === 'string' && data.status ? { wordpressPostStatus: data.status } : {}),
         }
         setArticles(prev => prev.map(a => a.id === article.id ? { ...a, ...updates } : a))
-        await saveArticle({ ...article, ...updates })
+        await patchArticle(article.id, updates)
         const dateObj = new Date(scheduledDate)
         const timeStr = `${dateObj.getMonth() + 1}月${dateObj.getDate()}日 ${article.scheduledTime}`
         setPublishResult({ articleId: article.id, success: true, message: `予約投稿しました（${timeStr} 公開予定）` })
@@ -222,7 +230,7 @@ export default function SchedulePage() {
         setPublishResult({ articleId: article.id, success: false, message: data.error || '予約投稿に失敗しました' })
       }
     } catch {
-      setPublishResult({ articleId: article.id, success: false, message: 'ネットワークエラーが発生しました' })
+      setPublishResult({ articleId: summary.id, success: false, message: 'ネットワークエラーが発生しました' })
     } finally {
       setPublishingId(null)
     }
@@ -234,7 +242,8 @@ export default function SchedulePage() {
     if (target) {
       const updated = { ...target, scheduledDate: undefined, scheduledTime: undefined }
       setArticles(prev => prev.map(a => a.id === deleteTargetId ? updated : a))
-      await saveArticle(updated)
+      // null 指定でサーバー側のフィールドを削除する
+      await patchArticle(deleteTargetId, { scheduledDate: null, scheduledTime: null }).catch(() => {})
     }
     setDeleteTargetId(null)
   }

@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { SavedArticle } from '@/lib/types'
-import { getAllArticles, saveArticle, deleteArticle } from '@/lib/articleStorage'
+import { ArticleSummary, SavedArticle } from '@/lib/types'
+import { getArticleSummaries, getArticleById, saveArticle, deleteArticle } from '@/lib/articleStorage'
 import { applyInternalLinksToText } from '@/lib/internalLinks'
 import { setSessionPreviewImage } from '@/lib/sessionPreviewImage'
 import {
@@ -29,17 +29,17 @@ type SortKey = 'dateDesc' | 'dateAsc' | 'titleAsc'
 
 export default function PublishedArticlesPage() {
   const router = useRouter()
-  const [articles, setArticles] = useState<SavedArticle[]>([])
+  const [articles, setArticles] = useState<ArticleSummary[]>([])
   const [mounted, setMounted] = useState(false)
   const [filterOpen, setFilterOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('dateDesc')
   const [visibleCount, setVisibleCount] = useState(ARTICLE_CARD_PAGE_SIZE)
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [confirmTarget, setConfirmTarget] = useState<SavedArticle | null>(null)
+  const [confirmTarget, setConfirmTarget] = useState<ArticleSummary | null>(null)
 
   const loadArticles = async () => {
-    const all = await getAllArticles()
+    const all = await getArticleSummaries()
     setArticles(all.filter(article => article.status === 'published'))
   }
 
@@ -51,19 +51,22 @@ export default function PublishedArticlesPage() {
     setVisibleCount(ARTICLE_CARD_PAGE_SIZE)
   }, [articles, searchQuery, sortKey])
 
-  const handleDuplicateToSaved = async (article: SavedArticle) => {
-    const newArticle: SavedArticle = {
-      ...article,
-      id: `copy-${Date.now()}`,
-      wordpressUrl: undefined,
-      status: 'draft',
-      createdAt: new Date().toISOString(),
-      scheduledDate: undefined,
-      imageUrl: '',
-    }
+  const handleDuplicateToSaved = async (summary: ArticleSummary) => {
     try {
+      // 複製には本文が必要なのでフル記事を取得する
+      const article = await getArticleById(summary.id)
+      if (!article) throw new Error('記事の取得に失敗しました')
+      const newArticle: SavedArticle = {
+        ...article,
+        id: `copy-${Date.now()}`,
+        wordpressUrl: undefined,
+        status: 'draft',
+        createdAt: new Date().toISOString(),
+        scheduledDate: undefined,
+        imageUrl: '',
+      }
       await saveArticle(newArticle)
-      setCopiedId(article.id)
+      setCopiedId(summary.id)
       setTimeout(() => setCopiedId(null), 2000)
       await loadArticles()
     } catch (e) {
@@ -71,12 +74,17 @@ export default function PublishedArticlesPage() {
     }
   }
 
-  const handleDelete = (article: SavedArticle) => {
+  const handleDelete = (article: ArticleSummary) => {
     setConfirmTarget(article)
   }
 
   const handlePreview = useCallback(
-    async (article: SavedArticle) => {
+    async (summary: ArticleSummary) => {
+      const article = await getArticleById(summary.id)
+      if (!article) {
+        alert('記事の取得に失敗しました')
+        return
+      }
       const content = applyInternalLinksToText(
         article.refinedContent || article.originalContent || '',
         []
