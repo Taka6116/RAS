@@ -1035,6 +1035,64 @@ async function resolveWordPressTagIds(
 }
 
 /**
+ * 投稿失敗時の原因切り分け診断。
+ * REST API基点・認証・投稿タイプの3段階をチェックし、どの層で弾かれているかを返す。
+ */
+async function diagnoseWordPressAccess(
+  wpUrl: string,
+  credentials: string,
+  postType: string
+): Promise<{ summary: string; likelyCause: string }> {
+  const results: { label: string; status: number; isHtml: boolean; code?: string }[] = []
+
+  const probe = async (label: string, url: string, withAuth: boolean) => {
+    try {
+      const res = await fetch(url, {
+        cache: 'no-store',
+        headers: withAuth ? { Authorization: `Basic ${credentials}` } : undefined,
+      })
+      const text = await res.text().catch(() => '')
+      const isHtml = /<html|<!DOCTYPE/i.test(text.slice(0, 300))
+      let code: string | undefined
+      if (!isHtml) {
+        try {
+          code = (JSON.parse(text) as { code?: string })?.code
+        } catch { /* JSONでないボディは無視 */ }
+      }
+      results.push({ label, status: res.status, isHtml, code })
+    } catch (e) {
+      results.push({ label, status: 0, isHtml: false, code: e instanceof Error ? e.message.slice(0, 60) : 'fetch failed' })
+    }
+  }
+
+  await probe('REST基点', `${wpUrl}/wp-json/`, false)
+  await probe('認証(users/me)', `${wpUrl}/wp-json/wp/v2/users/me?context=edit`, true)
+  await probe(`投稿タイプ(${postType})`, `${wpUrl}/wp-json/wp/v2/${postType}?per_page=1&context=edit`, true)
+
+  const summary = results
+    .map(r => `${r.label}: ${r.status === 0 ? '接続エラー' : `HTTP ${r.status}`}${r.isHtml ? '(HTML応答)' : ''}${r.code ? `(${r.code})` : ''}`)
+    .join(' / ')
+
+  const [base, auth, type] = results
+  let likelyCause: string
+  if (base && base.status !== 200 && (base.isHtml || base.status === 403)) {
+    likelyCause = 'サーバー側のWAF・セキュリティ設定がREST APIへのアクセス自体をブロックしています（海外IPアクセス制限・SiteGuard等の可能性）。ホスティング/セキュリティプラグインの設定でREST APIまたはVercelからのアクセスを許可してください。'
+  } else if (auth && (auth.status === 401 || auth.status === 403)) {
+    likelyCause = auth.isHtml
+      ? 'WAFが認証付きリクエストをブロックしています。セキュリティプラグイン（SiteGuard等）の「REST API保護」や海外IP制限を確認してください。'
+      : 'アプリケーションパスワードの認証に失敗しています。WORDPRESS_USERNAME / WORDPRESS_APP_PASSWORD を再確認し、必要なら新しいアプリケーションパスワードを発行してください。'
+  } else if (type && (type.status === 403 || type.status === 404)) {
+    likelyCause = `認証は通っていますが「${postType}」投稿タイプへのアクセスが拒否されています。ユーザー権限（投稿者以上）と、カスタム投稿タイプのREST API公開設定（show_in_rest）を確認してください。`
+  } else if (results.every(r => r.status === 200)) {
+    likelyCause = '接続・認証・投稿タイプの読み取りは正常です。投稿本文の内容（WAFが特定の文字列をブロックしている等）またはユーザーの投稿作成権限を確認してください。'
+  } else {
+    likelyCause = '上記の診断結果を確認してください。'
+  }
+
+  return { summary, likelyCause }
+}
+
+/**
  * WordPress REST APIに投稿する
  */
 export async function postToWordPress(
@@ -1127,19 +1185,38 @@ export async function postToWordPress(
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
+      const rawBody = await response.text().catch(() => '');
+      const isHtmlBody = /<html|<!DOCTYPE/i.test(rawBody.slice(0, 300));
+      let errorData: { message?: string; code?: string } = {};
+      if (!isHtmlBody) {
+        try {
+          errorData = JSON.parse(rawBody);
+        } catch { /* JSONでないボディは無視 */ }
+      }
       const message =
-        (errorData as { message?: string }).message ||
-        (errorData as { code?: string }).code ||
-        response.statusText;
+        errorData.message ||
+        errorData.code ||
+        (isHtmlBody ? `${response.statusText}（HTML応答＝WAF/サーバー側ブロックの可能性）` : response.statusText);
 
       // 403 等の原因特定用：詳細をコンソールに出力
-      console.error('[WordPress 403 デバッグ] リクエストURL:', requestUrl);
-      console.error('[WordPress 403 デバッグ] レスポンスステータス:', response.status);
-      console.error('[WordPress 403 デバッグ] レスポンスボディ:', JSON.stringify(errorData, null, 2));
-      console.error('[WordPress 403 デバッグ] 認証ヘッダー:', authHeaderValue);
+      console.error('[WordPress デバッグ] リクエストURL:', requestUrl);
+      console.error('[WordPress デバッグ] レスポンスステータス:', response.status);
+      console.error('[WordPress デバッグ] レスポンスボディ(先頭500字):', rawBody.slice(0, 500));
+      console.error('[WordPress デバッグ] 認証ヘッダー:', authHeaderValue);
 
-      throw new Error(`WordPress API error: ${response.status} - ${message}`);
+      // 401/403 は原因切り分け診断を実行して、どの層で弾かれているかをエラーに含める
+      let diagnosisText = '';
+      if (response.status === 401 || response.status === 403) {
+        try {
+          const { summary, likelyCause } = await diagnoseWordPressAccess(wpUrl, credentials, postType);
+          console.error('[WordPress 接続診断]', summary, '→', likelyCause);
+          diagnosisText = `\n【接続診断】${summary}\n【推定原因】${likelyCause}`;
+        } catch (diagErr) {
+          console.error('[WordPress 接続診断] 診断自体に失敗:', diagErr);
+        }
+      }
+
+      throw new Error(`WordPress API error: ${response.status} - ${message}${diagnosisText}`);
     }
 
     const data = await response.json();

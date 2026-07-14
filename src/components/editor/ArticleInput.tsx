@@ -451,7 +451,7 @@ export default function ArticleInput({
                     onClick={onNext}
                     className="py-4 px-8 h-auto"
                   >
-                    <span className="font-bold text-base">Geminiで推敲する</span>
+                    <span className="font-bold text-base">推敲する</span>
                     <ArrowRight size={18} className="ml-2" />
                   </Button>
                 </div>
@@ -593,14 +593,15 @@ function GeneratingLoader({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/45 backdrop-blur-md p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/45 backdrop-blur-md p-3 sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="generating-loader-title"
       aria-busy="true"
     >
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200/90 max-w-md w-full p-6 sm:p-8 text-left">
-        <div className="flex items-start gap-4 mb-6">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200/90 w-[min(1100px,100%)] h-[92vh] flex flex-col p-5 sm:p-7 text-left">
+        {/* ヘッダー */}
+        <div className="flex items-start gap-4 mb-4 flex-shrink-0">
           <div
             className="flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center"
             style={{
@@ -618,8 +619,9 @@ function GeneratingLoader({
             <h2 id="generating-loader-title" className="text-base font-bold text-[#1A1A2E] leading-snug">
               AIが執筆しています
             </h2>
-            <p className="text-xs text-[#64748B] mt-1.5 leading-relaxed">
+            <p className="text-xs text-[#64748B] mt-1 leading-relaxed">
               編集方針に沿って下書きを生成しています
+              {previewText && `（${previewText.length.toLocaleString()}文字）`}
             </p>
           </div>
           <div
@@ -635,7 +637,8 @@ function GeneratingLoader({
           </div>
         </div>
 
-        <div className="mb-6">
+        {/* プログレスバー */}
+        <div className="mb-4 flex-shrink-0">
           <div className="h-2 rounded-full overflow-hidden bg-[#D0E3F0]">
             <div
               className="h-full rounded-full transition-[width] duration-500 ease-out"
@@ -645,122 +648,120 @@ function GeneratingLoader({
               }}
             />
           </div>
-          <div className="flex justify-between mt-2 text-[10px] tracking-[0.08em] font-semibold uppercase text-[#94A3B8]">
+          <div className="flex justify-between mt-1.5 text-[10px] tracking-[0.08em] font-semibold uppercase text-[#94A3B8]">
             <span>準備</span>
             <span>仕上げ</span>
           </div>
         </div>
 
-        {/* 生成中の本文プレビュー（ストリーミング） */}
-        {previewText && (
-          <div className="mb-6">
-            <p className="text-[10px] tracking-[0.08em] font-semibold uppercase text-[#94A3B8] mb-1.5">
-              生成中の本文（{previewText.length.toLocaleString()}文字）
-            </p>
+        {/* メイン領域: 生成本文プレビュー（画面いっぱい） or チェックリスト */}
+        <div className="flex-1 min-h-0 mb-4">
+          {previewText ? (
             <div
               ref={previewScrollRef}
-              className="max-h-40 overflow-y-auto rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3.5 py-3 text-xs leading-relaxed text-[#475569] whitespace-pre-wrap"
+              className="h-full overflow-y-auto rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-5 py-4 text-sm leading-relaxed text-[#334155] whitespace-pre-wrap"
             >
               {previewText}
-              <span className="inline-block w-1.5 h-3.5 ml-0.5 align-middle bg-[#009AE0] animate-pulse" aria-hidden />
+              <span className="inline-block w-1.5 h-4 ml-0.5 align-middle bg-[#009AE0] animate-pulse" aria-hidden />
             </div>
-          </div>
-        )}
-
-        <ul className="space-y-2 mb-6 list-none p-0 m-0">
-          {GENERATING_CHECKLIST.map((item, i) => {
-            const state = checklistRowState(step, i, loadingPhase, progress)
-            const hint = checklistActiveHint(step, i, loadingPhase, progress)
-            return (
-              <li
-                key={item.id}
-                className={`flex items-start gap-3 rounded-xl transition-all duration-300 ${
-                  state === 'active'
-                    ? 'bg-[#F8FAFC] shadow-[inset_0_0_0_1px_rgba(226,232,240,0.9)] -mx-1 px-3 py-2.5'
-                    : 'py-1 px-1'
-                }`}
-              >
-                {state === 'done' && (
-                  <span
-                    className="flex-shrink-0 w-5 h-5 mt-0.5 rounded-full flex items-center justify-center"
-                    style={{ backgroundColor: '#DBEAFE' }}
-                  >
-                    <Check className="w-3 h-3 text-blue-700" strokeWidth={2.5} aria-hidden />
-                  </span>
-                )}
-                {state === 'active' && (
-                  <span
-                    className={`flex-shrink-0 w-5 h-5 mt-0.5 rounded-full border-2 flex items-center justify-center bg-white ${
-                      reduceMotion ? '' : 'animate-loader-ring'
-                    }`}
-                    style={{ borderColor: '#0A2540' }}
-                    aria-current="step"
-                  >
-                    <span
-                      className={`w-2 h-2 rounded-full ${reduceMotion ? '' : 'animate-loader-dot-soft'}`}
-                      style={{ backgroundColor: '#0A2540' }}
-                    />
-                  </span>
-                )}
-                {state === 'pending' && (
-                  <span
-                    className="flex-shrink-0 w-5 h-5 mt-0.5 rounded-full border-2 border-[#D0E3F0] bg-white"
-                    aria-hidden
-                  />
-                )}
-                <div className="flex-1 min-w-0 pt-0.5">
-                  <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0">
-                    <span
-                      className={`text-xs sm:text-sm leading-snug ${
-                        state === 'pending' ? 'text-[#94A3B8]' : 'text-[#334155]'
-                      } ${state === 'active' ? 'font-semibold text-[#1A1A2E]' : ''}`}
+          ) : (
+            <div className="h-full flex items-center justify-center rounded-xl border border-dashed border-[#E2E8F0] bg-[#FAFCFE]">
+              <ul className="space-y-3 list-none p-0 m-0 w-full max-w-sm px-6">
+                {GENERATING_CHECKLIST.map((item, i) => {
+                  const state = checklistRowState(step, i, loadingPhase, progress)
+                  const hint = checklistActiveHint(step, i, loadingPhase, progress)
+                  return (
+                    <li
+                      key={item.id}
+                      className={`flex items-start gap-3 rounded-xl transition-all duration-300 ${
+                        state === 'active'
+                          ? 'bg-white shadow-[inset_0_0_0_1px_rgba(226,232,240,0.9)] px-3 py-2.5'
+                          : 'py-1 px-1'
+                      }`}
                     >
-                      {item.label}
-                    </span>
-                    {state === 'active' && !reduceMotion && (
-                      <span className="inline-flex gap-1 items-center" aria-hidden>
-                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0A2540] animate-loader-dot-soft" />
+                      {state === 'done' && (
                         <span
-                          className="inline-block w-1.5 h-1.5 rounded-full bg-[#0A2540] animate-loader-dot-soft"
-                          style={{ animationDelay: '120ms' }}
-                        />
+                          className="flex-shrink-0 w-5 h-5 mt-0.5 rounded-full flex items-center justify-center"
+                          style={{ backgroundColor: '#DBEAFE' }}
+                        >
+                          <Check className="w-3 h-3 text-blue-700" strokeWidth={2.5} aria-hidden />
+                        </span>
+                      )}
+                      {state === 'active' && (
                         <span
-                          className="inline-block w-1.5 h-1.5 rounded-full bg-[#0A2540] animate-loader-dot-soft"
-                          style={{ animationDelay: '240ms' }}
+                          className={`flex-shrink-0 w-5 h-5 mt-0.5 rounded-full border-2 flex items-center justify-center bg-white ${
+                            reduceMotion ? '' : 'animate-loader-ring'
+                          }`}
+                          style={{ borderColor: '#0A2540' }}
+                          aria-current="step"
+                        >
+                          <span
+                            className={`w-2 h-2 rounded-full ${reduceMotion ? '' : 'animate-loader-dot-soft'}`}
+                            style={{ backgroundColor: '#0A2540' }}
+                          />
+                        </span>
+                      )}
+                      {state === 'pending' && (
+                        <span
+                          className="flex-shrink-0 w-5 h-5 mt-0.5 rounded-full border-2 border-[#D0E3F0] bg-white"
+                          aria-hidden
                         />
-                      </span>
-                    )}
-                    {state === 'active' && reduceMotion && (
-                      <span className="text-xs font-semibold text-[#0A2540]" aria-hidden>
-                        …
-                      </span>
-                    )}
-                  </div>
-                  {hint && (
-                    <p className="text-[10px] sm:text-[11px] text-[#64748B] mt-1.5 leading-relaxed motion-safe:transition-opacity">
-                      {hint}
-                    </p>
-                  )}
-                </div>
-              </li>
-            )
-          })}
-        </ul>
+                      )}
+                      <div className="flex-1 min-w-0 pt-0.5">
+                        <span
+                          className={`text-sm leading-snug ${
+                            state === 'pending' ? 'text-[#94A3B8]' : 'text-[#334155]'
+                          } ${state === 'active' ? 'font-semibold text-[#1A1A2E]' : ''}`}
+                        >
+                          {item.label}
+                        </span>
+                        {hint && (
+                          <p className="text-[11px] text-[#64748B] mt-1 leading-relaxed">
+                            {hint}
+                          </p>
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+        </div>
 
-        <div className="flex items-center justify-between pt-5 border-t border-[#F1F5F9]">
-          <div className="flex items-center -space-x-2" aria-hidden>
-            <div
-              className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-[9px] font-bold text-[#64748B]"
-              style={{ background: '#F1F5F9' }}
-            >
-              You
-            </div>
-            <div
-              className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-[9px] font-bold text-[#0A2540]"
-              style={{ background: '#EEF2FF' }}
-            >
-              AI
-            </div>
+        {/* フッター: 進行フェーズ（横並び）＋キャンセル */}
+        <div className="flex items-center justify-between gap-3 pt-4 border-t border-[#F1F5F9] flex-shrink-0 flex-wrap">
+          <div className="flex items-center gap-4 flex-wrap">
+            {GENERATING_CHECKLIST.map((item, i) => {
+              const state = checklistRowState(step, i, loadingPhase, progress)
+              return (
+                <span key={item.id} className="inline-flex items-center gap-1.5">
+                  {state === 'done' ? (
+                    <Check className="w-3.5 h-3.5 text-[#009AE0]" strokeWidth={2.5} aria-hidden />
+                  ) : (
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        state === 'active'
+                          ? `bg-[#0A2540] ${reduceMotion ? '' : 'animate-pulse'}`
+                          : 'bg-[#D0E3F0]'
+                      }`}
+                      aria-hidden
+                    />
+                  )}
+                  <span
+                    className={`text-[11px] ${
+                      state === 'pending'
+                        ? 'text-[#94A3B8]'
+                        : state === 'active'
+                        ? 'font-bold text-[#1A1A2E]'
+                        : 'text-[#64748B]'
+                    }`}
+                  >
+                    {item.label}
+                  </span>
+                </span>
+              )
+            })}
           </div>
           <button
             type="button"

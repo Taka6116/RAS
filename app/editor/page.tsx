@@ -71,6 +71,7 @@ function EditorContent() {
   const [geminiToastShown, setGeminiToastShown] = useState(false)
   const [geminiStatus, setGeminiStatus] = useState<ProcessingState>('idle')
   const [geminiError, setGeminiError] = useState<string | null>(null)
+  const [geminiStreamText, setGeminiStreamText] = useState('')
   const [fireflyStatus, setFireflyStatus] = useState<ProcessingState>('idle')
   const [fireflyError, setFireflyError] = useState<string | null>(null)
   const [wordpressStatus, setWordpressStatus] = useState<ProcessingState>('idle')
@@ -187,6 +188,7 @@ function EditorContent() {
   const callGeminiApi = useCallback(async () => {
     setGeminiError(null)
     setGeminiStatus('loading')
+    setGeminiStreamText('')
     try {
       const res = await fetch('/api/gemini', {
         method: 'POST',
@@ -197,20 +199,73 @@ function EditorContent() {
           targetKeyword: article.targetKeyword ?? '',
         }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || '推敲に失敗しました')
+
+      if (!res.ok) {
+        // エラーはJSONとは限らない（ゲートウェイの504はHTML/テキストを返す）
+        let message = `推敲に失敗しました（HTTP ${res.status}）`
+        try {
+          const data = await res.json()
+          if (data?.error) message = data.error
+        } catch {
+          if (res.status === 504) message = '推敲がタイムアウトしました。時間をおいて再度お試しください。'
+        }
+        throw new Error(message)
+      }
+
+      const contentType = res.headers.get('content-type') ?? ''
+      let result: { refinedTitle?: string; refinedContent?: string; slug?: string } | null = null
+
+      if (contentType.includes('ndjson') && res.body) {
+        // NDJSONストリーミング: 推敲テキストを逐次表示しながら完了イベントを待つ
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let accumulated = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+          for (const line of lines) {
+            if (!line.trim()) continue
+            let event: { type?: string; text?: string; refinedTitle?: string; refinedContent?: string; slug?: string; error?: string }
+            try {
+              event = JSON.parse(line)
+            } catch {
+              continue
+            }
+            if (event.type === 'chunk' && typeof event.text === 'string') {
+              accumulated += event.text
+              setGeminiStreamText(accumulated)
+            } else if (event.type === 'reset') {
+              accumulated = ''
+              setGeminiStreamText('')
+            } else if (event.type === 'done') {
+              result = event
+            } else if (event.type === 'error') {
+              throw new Error(event.error || '推敲に失敗しました')
+            }
+          }
+        }
+        if (!result) throw new Error('推敲が中断されました。再度お試しください。')
+      } else {
+        // 旧形式（JSON一括）へのフォールバック
+        result = await res.json()
+      }
+
       const refinedTitle =
-        typeof data.refinedTitle === 'string' && data.refinedTitle.trim().length > 0
-          ? data.refinedTitle
+        typeof result?.refinedTitle === 'string' && result.refinedTitle.trim().length > 0
+          ? result.refinedTitle
           : article.title
       const refinedContent =
-        typeof data.refinedContent === 'string' ? data.refinedContent.trim() : ''
+        typeof result?.refinedContent === 'string' ? result.refinedContent.trim() : ''
       if (!refinedContent) {
-        throw new Error('Geminiの推敲結果が空です。再度お試しください。')
+        throw new Error('推敲結果が空です。再度お試しください。')
       }
       updateArticle({ refinedTitle, refinedContent })
-      if (typeof data.slug === 'string' && data.slug.trim()) {
-        const s = data.slug.trim()
+      if (typeof result?.slug === 'string' && result.slug.trim()) {
+        const s = result.slug.trim()
         setRefineSlugSuggestion(s)
         setSlug(s)
       } else {
@@ -220,6 +275,8 @@ function EditorContent() {
     } catch (e) {
       setGeminiStatus('error')
       setGeminiError(e instanceof Error ? e.message : '推敲に失敗しました')
+    } finally {
+      setGeminiStreamText('')
     }
   }, [article.title, article.originalContent, article.targetKeyword, updateArticle])
 
@@ -580,6 +637,7 @@ function EditorContent() {
           article={article}
           geminiStatus={geminiStatus}
           geminiError={geminiError}
+          streamText={geminiStreamText}
           showCompletionToast={!geminiToastShown}
           onCompletionToastShown={() => setGeminiToastShown(true)}
           onRefinedTitleChange={refinedTitle => updateArticle({ refinedTitle })}

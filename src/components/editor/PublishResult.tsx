@@ -388,7 +388,7 @@ export default function PublishResult({
                   role="alert"
                 >
                   <p className="font-medium mb-1">投稿に失敗しました</p>
-                  <p className="font-mono text-xs break-all">{wordpressError}</p>
+                  <p className="font-mono text-xs break-all whitespace-pre-wrap">{wordpressError}</p>
                   <p className="mt-2 text-xs text-red-600">
                     Vercelの環境変数（WORDPRESS_URL / USERNAME / APP_PASSWORD）や、WordPressのアプリパスワード（0とO・スペース）を確認してください。
                   </p>

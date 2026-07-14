@@ -533,7 +533,9 @@ P（結論）→ R（理由）→ E（RICE CLOUD事例・具体例）→ P（ま
 export async function refineArticleWithGemini(
   title: string,
   content: string,
-  targetKeyword?: string
+  targetKeyword?: string,
+  /** 指定すると生成テキストを逐次通知する（ストリーミングUI用） */
+  streamHandlers?: StreamHandlers
 ): Promise<RefinedArticle> {
   // 元記事から監修者テキストを事前に除去
   const cleanedContent = stripSupervisorText(content)
@@ -640,7 +642,7 @@ ${targetKeyword?.trim() ? `ターゲットキーワード：${targetKeyword}` : 
 
 ※「---」の下には推敲後本文のみを記述してください。`.trim()
 
-  let text = await generateContentWithFallback(apiKey, prompt)
+  let text = await generateContentWithFallback(apiKey, prompt, streamHandlers)
   text = text
     .replace(/\*\*(.+?)\*\*/g, '$1')
     .replace(/\*(.*?)\*/g, '$1')
