@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Upload, X, Search, Sparkles, Globe, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { Upload, X, Search, Sparkles, Globe, TrendingUp, TrendingDown, Minus, RefreshCw } from 'lucide-react'
 import type { AhrefsDataset, AhrefsDatasetType } from '@/lib/ahrefsCsvParser'
 import { analyzeKeywords, detectTrends, getCategoryCounts, mergeAndAnalyze, type ScoredKeyword, type TrendKeyword, type CategoryCount, type PriorityLevel } from '@/lib/ahrefsAnalyzer'
 import type { ArticleSummary } from '@/lib/types'
@@ -67,6 +67,13 @@ interface DatasetMeta {
   type: AhrefsDatasetType
   rowCount: number
   uploadedAt: string
+}
+
+interface AhrefsApiStatus {
+  configured: boolean
+  domain: string | null
+  country: string
+  maxRows: number
 }
 
 function fmtNum(n: number): string { return n.toLocaleString('ja-JP') }
@@ -219,6 +226,9 @@ export default function AhrefsPage() {
   const [index, setIndex] = useState<DatasetMeta[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [apiFetching, setApiFetching] = useState(false)
+  const [apiStatus, setApiStatus] = useState<AhrefsApiStatus | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [articleActionMap, setArticleActionMap] = useState<Map<string, ArticleAction>>(new Map())
@@ -246,6 +256,19 @@ export default function AhrefsPage() {
   }, [])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/ahrefs/fetch', { cache: 'no-store' })
+      .then(response => response.json())
+      .then(data => {
+        if (!cancelled) setApiStatus(data as AhrefsApiStatus)
+      })
+      .catch(() => {
+        if (!cancelled) setApiStatus({ configured: false, domain: null, country: 'jp', maxRows: 25 })
+      })
+    return () => { cancelled = true }
+  }, [])
 
   // 記事一覧を取得してKW→アクション情報のマップを構築
   useEffect(() => {
@@ -279,6 +302,28 @@ export default function AhrefsPage() {
       setUploading(false)
     }
   }, [uploading, fetchData])
+
+  const handleApiFetch = useCallback(async () => {
+    if (apiFetching) return
+    setApiFetching(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const response = await fetch('/api/ahrefs/fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Ahrefs APIからの取得に失敗しました')
+      setNotice(data.message || 'Ahrefs APIのデータを更新しました')
+      await fetchData()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ahrefs APIからの取得に失敗しました')
+    } finally {
+      setApiFetching(false)
+    }
+  }, [apiFetching, fetchData])
 
   const handleDeleteDataset = useCallback(async (id: string) => {
     try {
@@ -376,31 +421,58 @@ export default function AhrefsPage() {
         <div>
           <h1 className="text-2xl font-bold text-[#1A1A2E] mb-1">KW分析ダッシュボード</h1>
           <p className="text-sm text-[#64748B]">
-            AhrefsのCSVデータから狙い目キーワードを分析し、記事制作につなげます。
+            Ahrefs API・CSVのデータから狙い目キーワードを分析し、記事制作につなげます。
           </p>
         </div>
-        <div className="relative flex-shrink-0">
-          <input
-            type="file"
-            accept=".csv,.tsv"
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            onChange={e => { handleUpload(e.target.files); e.target.value = '' }}
-            disabled={uploading}
-          />
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-[#D0E3F0] bg-white hover:border-[#009AE0] hover:bg-[#F0F4FF] transition-colors text-sm font-medium text-[#475569] whitespace-nowrap"
-          >
-            <Upload size={16} className="text-[#94A3B8]" />
-            {uploading ? 'アップロード中...' : 'CSVインポート'}
-          </button>
+        <div className="flex flex-wrap justify-end gap-2 flex-shrink-0">
+          {apiStatus?.configured && (
+            <button
+              type="button"
+              onClick={handleApiFetch}
+              disabled={apiFetching}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#009AE0] hover:bg-[#0080C0] disabled:bg-[#7FCBEA] text-white transition-colors text-sm font-bold whitespace-nowrap shadow-sm"
+              title={`${apiStatus.domain} の自社流入KWとRICE CLOUD重点KWを取得`}
+            >
+              <RefreshCw size={16} className={apiFetching ? 'animate-spin' : ''} />
+              {apiFetching ? 'APIから取得中...' : 'APIから今すぐ更新'}
+            </button>
+          )}
+          <div className="relative">
+            <input
+              type="file"
+              accept=".csv,.tsv"
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              onChange={e => { handleUpload(e.target.files); e.target.value = '' }}
+              disabled={uploading}
+            />
+            <button
+              type="button"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-[#D0E3F0] bg-white hover:border-[#009AE0] hover:bg-[#F0F4FF] transition-colors text-sm font-medium text-[#475569] whitespace-nowrap"
+            >
+              <Upload size={16} className="text-[#94A3B8]" />
+              {uploading ? 'アップロード中...' : 'CSVインポート'}
+            </button>
+          </div>
         </div>
       </div>
+
+      {apiStatus?.configured && (
+        <p className="mb-4 text-xs text-[#64748B]">
+          API接続先: <span className="font-semibold text-[#0A2540]">{apiStatus.domain}</span>
+          {' '}（{apiStatus.country.toUpperCase()}）・自社流入KWは最大{apiStatus.maxRows}件を取得
+        </p>
+      )}
 
       {error && (
         <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800 flex items-start gap-2">
           <X size={16} className="flex-shrink-0 mt-0.5" />
           <span>{error}</span>
+        </div>
+      )}
+
+      {notice && (
+        <div className="mb-4 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-800">
+          {notice}
         </div>
       )}
 
@@ -416,7 +488,7 @@ export default function AhrefsPage() {
                   : 'bg-blue-50 text-blue-700 border-blue-200'
               }`}
             >
-              <span className="font-bold">{m.type === 'organic' ? '競合' : 'KW'}</span>
+              <span className="font-bold">{m.type === 'organic' ? '自社流入' : 'KW'}</span>
               <span className="truncate max-w-[200px]">{m.fileName.replace(/\.csv$/i, '')}</span>
               <span>{fmtNum(m.rowCount)}件</span>
               <span>{fmtDate(m.uploadedAt)}</span>
@@ -442,7 +514,7 @@ export default function AhrefsPage() {
           <Upload className="mx-auto text-[#94A3B8] mb-3" size={48} />
           <p className="text-lg font-bold text-[#1A1A2E] mb-2">データがありません</p>
           <p className="text-sm text-[#64748B]">
-            AhrefsからエクスポートしたCSVをアップロードすると、KW分析ダッシュボードが表示されます。
+            「APIから今すぐ更新」でRICE CLOUD向けの重点KWを取得するか、AhrefsからエクスポートしたCSVをアップロードしてください。
           </p>
         </div>
       )}

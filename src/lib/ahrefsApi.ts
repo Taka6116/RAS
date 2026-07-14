@@ -220,8 +220,17 @@ function mapKwExplorerRow(row: KwExplorerRow): AhrefsKeywordRow {
   }
 }
 
-/** バッチサイズ（KE API は 1 リクエストに含めるキーワード数の上限がプランで変わる） */
-const KE_BATCH_SIZE = 100
+/**
+ * KE API はプランごとに1リクエストの最大行数が異なる。
+ * Standardプランでも動作する25件を既定とし、上位プランでは
+ * AHREFS_API_MAX_ROWS で明示的に引き上げられるようにする。
+ */
+function keywordBatchSize(): number {
+  const configured = Number(process.env.AHREFS_API_MAX_ROWS)
+  return Number.isInteger(configured) && configured > 0
+    ? Math.min(configured, 1000)
+    : 25
+}
 
 /**
  * Keywords Explorer overview エンドポイントを使って
@@ -255,15 +264,16 @@ export async function fetchKeywordMetrics(
   ].join(',')
 
   const results: AhrefsKeywordRow[] = []
+  const batchSize = keywordBatchSize()
 
   // キーワードをバッチに分割してリクエスト
-  for (let i = 0; i < keywords.length; i += KE_BATCH_SIZE) {
-    const batch = keywords.slice(i, i + KE_BATCH_SIZE)
+  for (let i = 0; i < keywords.length; i += batchSize) {
+    const batch = keywords.slice(i, i + batchSize)
     const params = new URLSearchParams({
       keywords: batch.join(','),
       country,
       select:   SELECT_COLS,
-      limit:    String(KE_BATCH_SIZE),
+      limit:    String(batchSize),
     })
 
     const url = `${BASE_URL}/keywords-explorer/overview?${params.toString()}`

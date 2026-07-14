@@ -48,7 +48,7 @@ export default function LayoutWithSidebar({
         </div>
 
         {/* ナビゲーション */}
-        <nav className="flex-1 px-3 py-4 text-sm space-y-1 overflow-y-auto">
+        <nav className="scrollbar-none flex-1 px-3 py-4 text-sm space-y-1 overflow-y-auto">
           {[
             { href: '/editor',    label: '記事を作成' },
             { href: '/articles',  label: '保存済み記事一覧' },

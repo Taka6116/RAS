@@ -48,6 +48,33 @@ const PHASES: Record<StrategyPhase, { label: string; color: string }> = {
   decision: { label: '意思決定', color: '#e53e4f' },
 }
 
+const FUNNEL_PHASES: Record<StrategyPhase, { english: string; color: string; width: string; clipPath: string }> = {
+  awareness: {
+    english: 'Attention',
+    color: '#70B7EE',
+    width: '100%',
+    clipPath: 'polygon(0 0, 100% 0, 90% 100%, 10% 100%)',
+  },
+  research: {
+    english: 'Interest',
+    color: '#4B9CEB',
+    width: '80%',
+    clipPath: 'polygon(0 0, 100% 0, 87.5% 100%, 12.5% 100%)',
+  },
+  comparison: {
+    english: 'Desire',
+    color: '#3176B6',
+    width: '60%',
+    clipPath: 'polygon(0 0, 100% 0, 83.33% 100%, 16.67% 100%)',
+  },
+  decision: {
+    english: 'Action',
+    color: '#1F5285',
+    width: '40%',
+    clipPath: 'polygon(0 0, 100% 0, 50% 100%)',
+  },
+}
+
 function fmtDate(iso?: string): string {
   if (!iso) return '未実行'
   return new Date(iso).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -538,16 +565,21 @@ export default function CompetitiveAnalysisPage() {
 
               <div className="rounded-[16px] p-6" style={{ background: '#FFFFFF', border: '1px solid #D0E3F0' }}>
                 <div className="flex gap-2 items-center mb-4"><Users size={16} style={{ color: '#009AE0' }} /><h2 className="font-bold" style={{ color: '#1A1A2E' }}>ペルソナ × ファネル別の競争状況</h2></div>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <p className="text-[12px] mb-5" style={{ color: '#64748B' }}>検討段階が進むほど対象者は絞られます。各段階での自社・競合の訴求と、優先すべき打ち手を確認できます。</p>
+                <div className="mx-auto max-w-[760px]">
                   {(['awareness', 'research', 'comparison', 'decision'] as StrategyPhase[]).map(phase => {
                     const row = report.funnelCoverage.find(item => item.phase === phase)
                     const meta = PHASES[phase]
-                    return <div key={phase} className="rounded-[12px] overflow-hidden" style={{ border: '1px solid #D0E3F0' }}>
-                      <div className="px-3 py-2 text-[12px] text-white font-black" style={{ background: meta.color }}>{meta.label}</div>
-                      <div className="p-3 space-y-2 text-[11px] leading-relaxed">
-                        <p><strong style={{ color: '#009AE0' }}>自社:</strong> {row?.self ?? '—'}</p>
-                        <p><strong style={{ color: '#e53e4f' }}>競合:</strong> {row?.competitor ?? '—'}</p>
-                        <p style={{ color: '#64748B' }}><ChevronRight size={11} className="inline -mt-0.5" />{row?.implication ?? '—'}</p>
+                    const funnel = FUNNEL_PHASES[phase]
+                    return <div key={phase} className="mx-auto text-white" style={{ width: funnel.width, marginTop: phase === 'awareness' ? 0 : '-1px', clipPath: funnel.clipPath, background: funnel.color }}>
+                      <div className="min-h-[126px] px-8 py-4 flex flex-col justify-center text-center" style={{ paddingLeft: phase === 'decision' ? '20px' : undefined, paddingRight: phase === 'decision' ? '20px' : undefined }}>
+                        <p className="text-[17px] font-black leading-tight">{meta.label}</p>
+                        <p className="text-[12px] font-bold tracking-wide opacity-90">{funnel.english}</p>
+                        <div className="mt-2.5 text-[10px] leading-relaxed text-left space-y-0.5">
+                          <p><strong className="text-white/80">自社:</strong> {row?.self ?? '—'}</p>
+                          <p><strong className="text-white/80">競合:</strong> {row?.competitor ?? '—'}</p>
+                          <p className="pt-1 text-white/90"><ChevronRight size={11} className="inline -mt-0.5" />{row?.implication ?? '—'}</p>
+                        </div>
                       </div>
                     </div>
                   })}
