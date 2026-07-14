@@ -1,10 +1,15 @@
 /**
  * 仮説ペルソナ生成（サーバー専用）。
  *
- * 一次データ:
- * 1. WordPress の「導入事例・インタビュー」記事（公開・非公開）
- * 2. S3 の匿名導入事例（case-studies/ 配下の .md）
- * 3. Ahrefs KWデータ（検索需要の定量データ。ブランドKW除外）
+ * RICE CLOUD（ERP・SaaS導入支援会社）の見込み顧客＝エンドユーザー企業側の
+ * 人物像を、S3（data-for-ras）に実在するデータから推定する。
+ *
+ * 一次データ（存在するものだけを使う。全て任意）:
+ * 1. S3 の記事データ（articles/。RICE CLOUDが狙うテーマ・対象KWの実態）
+ * 2. S3 の参照資料（materials_for_articles/。会社・サービス・顧客に関する資料）
+ * 3. S3 の匿名導入事例（case-studies/ 配下の .md）※あれば
+ * 4. WordPress の「導入事例・インタビュー」記事 ※あれば
+ * 5. Ahrefs KWデータ（検索需要の定量データ。ブランドKW除外）
  *
  * これらを Claude に渡し、マーケティング戦略用の
  * 「ペルソナ × フェーズ × チャネル × カスタマージャーニー」を
@@ -16,14 +21,21 @@ import { getS3ObjectAsText, putS3Object, listS3Objects, getS3ObjectsAsTextBatch 
 import { loadRecentDatasets } from '@/lib/ahrefsLoader'
 import { fetchInterviewPosts } from '@/lib/wpInterviews'
 import type { AhrefsKeywordRow } from '@/lib/ahrefsCsvParser'
+import type { SavedArticle } from '@/lib/types'
 
 const PERSONAS_KEY = 'personas/personas.json'
 const CASE_STUDIES_PREFIX = 'case-studies/'
+const ARTICLES_PREFIX = 'articles/'
 
 /** 1インタビューあたりプロンプトに渡す最大文字数 */
 const MAX_INTERVIEW_CHARS = 6000
 /** 事例集の最大文字数 */
 const MAX_CASE_STUDY_CHARS = 8000
+/** 参照資料の最大文字数 */
+const MAX_MATERIAL_CHARS = 8000
+/** プロンプトに渡す記事数と1記事あたりの抜粋文字数 */
+const MAX_ARTICLES = 25
+const MAX_ARTICLE_EXCERPT_CHARS = 700
 /** プロンプトに渡すKW数 */
 const MAX_KEYWORDS = 60
 
@@ -91,6 +103,10 @@ export interface PersonaDocument {
     interviewTitles: string[]
     hasCaseStudies: boolean
     ahrefsKeywordCount: number
+    /** 材料に使ったS3記事数（旧データには存在しない） */
+    articleCount?: number
+    /** S3参照資料（materials_for_articles/）を使ったか */
+    hasMaterials?: boolean
   }
   generatedAt: string
 }
@@ -138,6 +154,85 @@ async function loadCaseStudies(): Promise<string> {
   }
 }
 
+/** プロンプトに渡す記事ダイジェスト（タイトル・KW・本文抜粋） */
+interface ArticleDigest {
+  title: string
+  targetKeyword: string
+  excerpt: string
+}
+
+/** マークダウン・HTML混じりの本文をプレーンテキスト化して抜粋を作る */
+function toExcerpt(content: string, maxChars: number): string {
+  return content
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[#>*`\-|]/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxChars)
+}
+
+/**
+ * S3 の articles/ から記事ダイジェストを読み込む。
+ * RICE CLOUDがどんなテーマ・KWで誰に向けて発信しているかの実データとして使う。
+ */
+async function loadArticleDigests(): Promise<ArticleDigest[]> {
+  try {
+    const objects = await listS3Objects(ARTICLES_PREFIX)
+    const jsonKeys = objects.filter(o => o.key.endsWith('.json')).map(o => o.key)
+    if (jsonKeys.length === 0) return []
+    const results = await getS3ObjectsAsTextBatch(jsonKeys)
+    const digests: (ArticleDigest & { createdAt: string })[] = []
+    for (const r of results) {
+      try {
+        const article = JSON.parse(r.content) as SavedArticle
+        const title = (article.refinedTitle || article.title || '').trim()
+        if (!title) continue
+        digests.push({
+          title,
+          targetKeyword: article.targetKeyword?.trim() ?? '',
+          excerpt: toExcerpt(article.refinedContent || article.originalContent || '', MAX_ARTICLE_EXCERPT_CHARS),
+          createdAt: article.createdAt ?? '',
+        })
+      } catch { /* 壊れたJSONはスキップ */ }
+    }
+    return digests
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, MAX_ARTICLES)
+      .map(({ title, targetKeyword, excerpt }) => ({ title, targetKeyword, excerpt }))
+  } catch (e) {
+    console.warn('[Persona] S3記事の読み込み失敗（なしで続行）:', e)
+    return []
+  }
+}
+
+/**
+ * S3 の参照資料（materials_for_articles/ 配下の .md/.txt/.csv）をまとめて読み込む。
+ * 会社・サービス・顧客理解の背景資料として使う。
+ */
+async function loadMaterials(): Promise<string> {
+  try {
+    const raw = process.env.S3_DRAFT_MATERIALS_PREFIX?.trim()
+    const prefix = raw && raw.length > 0 ? (raw.endsWith('/') ? raw : `${raw}/`) : 'materials_for_articles/'
+    const objects = await listS3Objects(prefix)
+    const textKeys = objects
+      .filter(o => /\.(md|txt|csv)$/i.test(o.key))
+      .map(o => o.key)
+    if (textKeys.length === 0) return ''
+    const results = await getS3ObjectsAsTextBatch(textKeys)
+    let combined = ''
+    for (const r of results) {
+      const name = r.key.split('/').pop() ?? r.key
+      combined += `\n\n【資料: ${name}】\n${r.content}`
+      if (combined.length >= MAX_MATERIAL_CHARS) break
+    }
+    return combined.slice(0, MAX_MATERIAL_CHARS).trim()
+  } catch (e) {
+    console.warn('[Persona] 参照資料の読み込み失敗（なしで続行）:', e)
+    return ''
+  }
+}
+
 /** Ahrefsの直近データセットから非ブランドKWをボリューム降順で集める */
 async function collectTopKeywords(): Promise<AhrefsKeywordRow[]> {
   try {
@@ -167,10 +262,16 @@ async function collectTopKeywords(): Promise<AhrefsKeywordRow[]> {
 // ─────────────────────────────────────────────
 
 function buildPersonaPrompt(input: {
+  articles: ArticleDigest[]
+  materials: string
   interviews: { title: string; text: string }[]
   caseStudies: string
   keywords: AhrefsKeywordRow[]
 }): string {
+  const articleBlocks = input.articles
+    .map((a, i) => `【記事${i + 1}】${a.title}${a.targetKeyword ? `（対象KW: ${a.targetKeyword}）` : ''}\n${a.excerpt}`)
+    .join('\n\n')
+
   const interviewBlocks = input.interviews
     .map((p, i) => {
       const body = p.text.length > MAX_INTERVIEW_CHARS
@@ -184,30 +285,38 @@ function buildPersonaPrompt(input: {
     .map(k => `- ${k.keyword}（月間検索数: ${k.volume}${k.intents ? ` / 意図: ${k.intents}` : ''}）`)
     .join('\n')
 
-  const caseBlock = input.caseStudies || '（事例資料なし）'
+  return `あなたはB2Bマーケティングストラテジストです。
 
-  return `あなたはB2Bマーケティングストラテジストです。ERP/SaaS導入支援会社「株式会社RICE CLOUD（ライスクラウド）」のマーケティング戦略立案のため、以下の一次データから「仮説ペルソナ」を作成してください。
+「株式会社RICE CLOUD（ライスクラウド）」は、Oracle NetSuite・Microsoft Dynamics 365・Power Platform などのERP/SaaSの導入支援・定着支援・導入失敗リカバリーを行う会社です。
+RICE CLOUDのマーケティング戦略立案のため、以下のデータから **RICE CLOUDの見込み顧客（＝ERP/SaaSの導入を検討する事業会社側の担当者・意思決定者）** の仮説ペルソナを作成してください。
+RICE CLOUD社内の人物やRICE CLOUDの競合他社の人物ではなく、あくまで「RICE CLOUDにとってのエンドユーザー企業側の人物像」であることに注意してください。
 
-# 一次データ
+# データ
 
-## 1. 実際の導入事例・お客様インタビュー（最重要データ。実在の顧客の生の声）
-${interviewBlocks || '（インタビューなし）'}
+## 1. RICE CLOUDが公開・作成しているSEO記事（誰のどんな課題に向けて発信しているかの実データ）
+${articleBlocks || '（記事データなし）'}
 
-## 2. 匿名化された支援事例集
-${caseBlock}
+## 2. 会社・サービス・顧客に関する参照資料
+${input.materials || '（参照資料なし）'}
 
-## 3. 実際の検索キーワードデータ（Ahrefs。検索需要の定量データ）
+## 3. 導入事例・お客様インタビュー（実在顧客の生の声。あれば最重要）
+${interviewBlocks || '（インタビューなし。記事テーマとKWから顧客像を推定してください）'}
+
+## 4. 匿名化された支援事例集
+${input.caseStudies || '（事例資料なし）'}
+
+## 5. 実際の検索キーワードデータ（Ahrefs。検索需要の定量データ）
 ${kwLines || '（KWデータなし）'}
 
 # 作成指示
 
-1. 事例・インタビューから読み取れる顧客類型を **3つの仮説ペルソナ** に整理してください。年齢層・業種・ERP/SaaS導入検討の動機（基幹システム刷新型／成長スケール型／導入失敗リカバリー型など）が互いに異なる類型にすること。
-2. 各ペルソナには、実際の事例で語られた課題・迷い・決断理由を反映し、quote には（要約で構わないので）事例の記述に基づく象徴的なひと言を入れてください。
-3. keywords には、このペルソナが検索しそうなKWを上記Ahrefsデータの中から優先的に選んでください（データにない語を補う場合は末尾に置く）。
-4. journey は必ず「認知」「情報収集」「比較検討」「意思決定」「導入後」の5フェーズで作成してください。barriers（離脱リスク）は事例に現れない推測を含むため、断定を避けた表現にすること。
+1. 上記データから読み取れる「ERP/SaaS導入を検討するエンドユーザー企業側の人物」を **3つの仮説ペルソナ** に整理してください。年齢層・業種・立場・導入検討の動機（基幹システム刷新型／成長スケール型／導入失敗リカバリー型など）が互いに異なる類型にすること。
+2. 各ペルソナの課題・迷い・決断理由は、記事が想定している読者課題・検索KWの意図・（あれば）事例の記述から導いてください。quote には、そのペルソナが言いそうな象徴的なひと言を入れてください（事例がある場合は事例の記述に基づくこと）。
+3. keywords には、このペルソナが検索しそうなKWを上記Ahrefsデータ・記事の対象KWの中から優先的に選んでください（データにない語を補う場合は末尾に置く）。
+4. journey は必ず「認知」「情報収集」「比較検討」「意思決定」「導入後」の5フェーズで作成してください。barriers（離脱リスク）は推測を含むため、断定を避けた表現にすること。
 5. channelStrategy は SEO記事・セミナー／ウェビナー・展示会・パートナー／ベンダー連携・広告・メール／ナーチャリングなど、RICE CLOUDが現実に取りうるチャネルで、ペルソナごとに優先度をつけてください。
 6. overallInsights には、3ペルソナを横断して「どのフェーズ×チャネルに注力すべきか」の戦略示唆を4〜6個書いてください。
-7. caveats には、このペルソナの限界（成約顧客のみのデータで失注者視点がない＝生存者バイアス、n=${input.interviews.length}件と少数、など）を明記してください。
+7. caveats には、このペルソナの限界を明記してください（実在顧客インタビュー${input.interviews.length}件・記事${input.articles.length}本からの推定であり実顧客の検証を経ていない、など、実際に使ったデータ量に即して書くこと）。
 8. 社名・個人名など特定可能な固有名詞はペルソナに含めないでください（仮名を使うこと）。
 9. 出力が長くなりすぎないよう、各フィールドは簡潔に書いてください（journey の各セルは80字以内、配列項目は各60字以内、goals/pains などの配列は3〜4個まで）。
 
@@ -262,25 +371,29 @@ function extractJson(text: string): string {
 // ─────────────────────────────────────────────
 
 export async function generatePersonaDocument(): Promise<PersonaDocument> {
-  // 1. 一次データ収集（並列）
-  const [interviews, caseStudies, keywords] = await Promise.all([
+  // 1. 一次データ収集（並列。存在しないソースは空として扱う）
+  const [articles, materials, interviews, caseStudies, keywords] = await Promise.all([
+    loadArticleDigests(),
+    loadMaterials(),
     fetchInterviewPosts(),
     loadCaseStudies(),
     collectTopKeywords(),
   ])
 
-  if (interviews.length === 0 && !caseStudies) {
+  if (articles.length === 0 && !materials && interviews.length === 0 && !caseStudies && keywords.length === 0) {
     throw new Error(
-      'ペルソナ生成の材料が見つかりません（WordPressの事例記事・S3の事例集ともに取得できませんでした）',
+      'ペルソナ生成の材料が見つかりません（S3の記事・参照資料・事例集、WordPressの事例記事、Ahrefsデータのいずれも取得できませんでした）',
     )
   }
 
   console.log(
-    `[Persona] 材料: インタビュー${interviews.length}件 / 事例集${caseStudies ? 'あり' : 'なし'} / KW${keywords.length}件`,
+    `[Persona] 材料: 記事${articles.length}件 / 資料${materials ? 'あり' : 'なし'} / インタビュー${interviews.length}件 / 事例集${caseStudies ? 'あり' : 'なし'} / KW${keywords.length}件`,
   )
 
   // 2. AI生成（Claude Bedrock）
   const prompt = buildPersonaPrompt({
+    articles,
+    materials,
     interviews,
     caseStudies,
     keywords,
@@ -323,6 +436,8 @@ export async function generatePersonaDocument(): Promise<PersonaDocument> {
       interviewTitles: interviews.map(p => p.title),
       hasCaseStudies: Boolean(caseStudies),
       ahrefsKeywordCount: keywords.length,
+      articleCount: articles.length,
+      hasMaterials: Boolean(materials),
     },
     generatedAt: new Date().toISOString(),
   }

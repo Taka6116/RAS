@@ -72,6 +72,8 @@ interface PersonaDocument {
     interviewTitles: string[]
     hasCaseStudies: boolean
     ahrefsKeywordCount: number
+    articleCount?: number
+    hasMaterials?: boolean
   }
   generatedAt: string
 }
@@ -177,8 +179,8 @@ export default function PersonasPage() {
   const handleGenerate = useCallback(async () => {
     if (generating) return
     const confirmMsg = doc
-      ? 'ペルソナを再生成しますか？\n最新の導入事例・KWデータをもとに作り直します（3〜5分程度かかります）。現在の内容は上書きされます。'
-      : '仮説ペルソナを生成しますか？\nWordPressの導入事例記事・S3の事例集・Ahrefsデータをもとに生成します（3〜5分程度かかります）。'
+      ? 'ペルソナを再生成しますか？\n最新の記事・KWデータをもとに作り直します（3〜5分程度かかります）。現在の内容は上書きされます。'
+      : '仮説ペルソナを生成しますか？\nS3の記事・参照資料・Ahrefs検索KWデータをもとに、RICE CLOUDの見込み顧客（ERP/SaaS導入を検討する企業側の人物像）を生成します（3〜5分程度かかります）。'
     if (!window.confirm(confirmMsg)) return
 
     setGenerating(true)
@@ -222,8 +224,8 @@ export default function PersonasPage() {
         </button>
       </div>
       <p className="text-sm mb-6" style={{ color: MUTED }}>
-        導入事例・お客様インタビュー・検索KWデータから作成した、マーケティング戦略用の仮説ペルソナ（プロト・ペルソナ）です。
-        事例が増えたら「再生成」で更新してください。
+        RICE CLOUDの記事・参照資料・検索KWデータから推定した、見込み顧客（ERP/SaaS導入を検討する企業側の担当者・意思決定者）の仮説ペルソナです。
+        記事や資料が増えたら「再生成」で更新してください。
       </p>
 
       {error && (
@@ -245,8 +247,8 @@ export default function PersonasPage() {
           <Users size={36} className="mx-auto mb-3" style={{ color: MUTED }} />
           <p className="text-sm font-bold mb-1" style={{ color: INK }}>まだペルソナが生成されていません</p>
           <p className="text-xs mb-0" style={{ color: MUTED }}>
-            右上の「ペルソナを生成」を押すと、WordPressの導入事例記事（非公開含む）・
-            S3の匿名事例集・Ahrefs検索KWデータをAIが分析し、3つの仮説ペルソナとカスタマージャーニーを作成します。
+            右上の「ペルソナを生成」を押すと、S3に保存された記事・参照資料・Ahrefs検索KWデータをAIが分析し、
+            RICE CLOUDの見込み顧客像として3つの仮説ペルソナとカスタマージャーニーを作成します。
           </p>
         </div>
       ) : (
@@ -259,6 +261,8 @@ export default function PersonasPage() {
             <Database size={14} className="mt-0.5 flex-shrink-0" />
             <div className="flex-1 min-w-[240px]">
               <span className="font-bold" style={{ color: INK }}>生成元データ: </span>
+              {(doc.dataSources.articleCount ?? 0) > 0 ? `S3記事 ${doc.dataSources.articleCount}件・` : ''}
+              {doc.dataSources.hasMaterials ? '参照資料・' : ''}
               導入事例・インタビュー {doc.dataSources.interviewCount}件
               {doc.dataSources.hasCaseStudies ? '・匿名事例集' : ''}
               ・検索KWデータ {doc.dataSources.ahrefsKeywordCount}件

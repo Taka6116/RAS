@@ -69,39 +69,46 @@ export async function fetchInterviewPosts(): Promise<InterviewPost[]> {
 
   const results: InterviewPost[] = []
 
+  // RICE CLOUDは記事をカスタム投稿タイプ（既定: column）で運用しているため、
+  // 標準の posts と両方を検索する
+  const customType = process.env.WORDPRESS_POST_TYPE?.trim() || 'column'
+  const postTypes = customType === 'posts' ? ['posts'] : ['posts', customType]
+
   // 認証付きで publish / private の両方を検索
-  for (const term of INTERVIEW_SEARCH_TERMS) {
-    for (const status of ['publish', 'private']) {
-      try {
-        const url =
-          `${config.wpUrl}/wp-json/wp/v2/posts` +
-          `?search=${encodeURIComponent(term)}` +
-          `&status=${status}&per_page=50&orderby=date&order=desc` +
-          `&_fields=id,date,link,status,title,content`
-        const res = await fetch(url, {
-          headers: { Authorization: config.authorization, Accept: 'application/json' },
-          cache: 'no-store',
-        })
-        if (!res.ok) {
-          console.warn(`[Interviews] 取得失敗 term=${term} status=${status}: HTTP ${res.status}`)
-          continue
-        }
-        const rows = (await res.json()) as WpPostRow[]
-        for (const row of rows) {
-          const title = htmlToText(row.title?.rendered ?? '')
-          // 検索は本文にもマッチするため、タイトルに事例・インタビューを含む記事に限定
-          if (!title.includes('事例') && !title.includes('インタビュー')) continue
-          results.push({
-            id: row.id,
-            title,
-            text: htmlToText(row.content?.rendered ?? ''),
-            link: row.link,
-            date: row.date,
-            status: row.status,
+  for (const postType of postTypes) {
+    for (const term of INTERVIEW_SEARCH_TERMS) {
+      for (const status of ['publish', 'private']) {
+        try {
+          const url =
+            `${config.wpUrl}/wp-json/wp/v2/${postType}` +
+            `?search=${encodeURIComponent(term)}` +
+            `&status=${status}&per_page=50&orderby=date&order=desc` +
+            `&_fields=id,date,link,status,title,content`
+          const res = await fetch(url, {
+            headers: { Authorization: config.authorization, Accept: 'application/json' },
+            cache: 'no-store',
           })
+          if (!res.ok) {
+            console.warn(`[Interviews] 取得失敗 type=${postType} term=${term} status=${status}: HTTP ${res.status}`)
+            continue
+          }
+          const rows = (await res.json()) as WpPostRow[]
+          for (const row of rows) {
+            const title = htmlToText(row.title?.rendered ?? '')
+            // 検索は本文にもマッチするため、タイトルに事例・インタビューを含む記事に限定
+            if (!title.includes('事例') && !title.includes('インタビュー')) continue
+            results.push({
+              id: row.id,
+              title,
+              text: htmlToText(row.content?.rendered ?? ''),
+              link: row.link,
+              date: row.date,
+              status: row.status,
+            })
+          }
+        } catch (e) {
+          console.warn(`[Interviews] 取得エラー type=${postType} term=${term} status=${status}:`, e)
         }
-      } catch (e) {
-        console.warn(`[Interviews] 取得エラー term=${term} status=${status}:`, e)
       }
     }
   }

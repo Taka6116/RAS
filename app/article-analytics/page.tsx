@@ -75,8 +75,6 @@ export default function ArticleAnalyticsPage() {
   useEffect(() => { void fetchData() }, [fetchData])
 
   const classified = useMemo(() => articles.map(classifyArticle), [articles])
-  const published = useMemo(() => articles.filter(isPublished), [articles])
-  const totalWords = useMemo(() => articles.reduce((sum, article) => sum + (article.wordCount || 0), 0), [articles])
   const topicRows = useMemo(() => [...CONTENT_TOPICS, { id: 'other' as const, label: 'その他', patterns: [] }].map(topic => ({
     ...topic,
     articles: classified.filter(article => article.topic === topic.id),
@@ -169,16 +167,9 @@ export default function ArticleAnalyticsPage() {
 
       {error && <div className="mb-6 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><AlertCircle size={16} className="mt-0.5 flex-shrink-0" />{error}</div>}
 
-      <div className="mb-7 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {[
-          { label: '管理記事数', value: articles.length, suffix: '件', color: '#1A1A2E' },
-          { label: '公開済み', value: published.length, suffix: '件', color: '#16A34A' },
-          { label: '総文字数', value: totalWords.toLocaleString(), suffix: '字', color: '#009AE0' },
-          { label: '品質確認候補', value: qualityIssues.length, suffix: '件', color: qualityIssues.length ? '#E67E22' : '#64748B' },
-        ].map(card => <div key={card.label} className="rounded-xl border border-[#D0E3F0] bg-white p-4">
-          <p className="text-[11px] font-semibold text-[#64748B]">{card.label}</p>
-          <p className="mt-1 text-3xl font-black tabular-nums" style={{ color: card.color }}>{loading ? '—' : card.value}<span className="ml-1 text-xs font-semibold text-[#94A3B8]">{card.suffix}</span></p>
-        </div>)}
+      <div className="mb-7 max-w-xs rounded-xl border border-[#D0E3F0] bg-white p-4">
+        <p className="text-[11px] font-semibold text-[#64748B]">管理記事数（S3に保存された全記事）</p>
+        <p className="mt-1 text-3xl font-black tabular-nums text-[#1A1A2E]">{loading ? '—' : articles.length}<span className="ml-1 text-xs font-semibold text-[#94A3B8]">件</span></p>
       </div>
 
       <section className="mb-6 rounded-xl border border-[#D0E3F0] bg-white p-5">
