@@ -1,381 +1,222 @@
 'use client'
 
-/**
- * 記事分析ページ
- * WordPress のカテゴリー・タグの記事件数を取得し、
- * 今どのテーマの記事がどれだけ投稿されているかを横棒グラフで可視化する。
- */
-
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { RefreshCw, PieChart, Hash, FolderTree, AlertCircle, Lightbulb, FileEdit } from 'lucide-react'
-import type { WpTagListItem } from '@/lib/wpTagList'
+import { AlertCircle, BarChart3, CheckCircle2, FileEdit, FileText, Lightbulb, RefreshCw, Target } from 'lucide-react'
+import type { AhrefsDataset } from '@/lib/ahrefsCsvParser'
+import { mergeAndAnalyze, type ScoredKeyword } from '@/lib/ahrefsAnalyzer'
 import { buildKwPrompt } from '@/lib/kwPromptBuilder'
+import {
+  CONTENT_TOPICS,
+  FUNNEL_STAGES,
+  classifyArticle,
+  isPublished,
+  isScheduled,
+  topicLabel,
+  type ClassifiedArticle,
+  type ContentTopicId,
+  type FunnelStage,
+} from '@/lib/contentPortfolio'
+import type { ArticleSummary } from '@/lib/types'
 
-interface WpCategoryListItem {
-  id: number
-  name: string
-  slug: string
-  count?: number
-  parent?: number
+const STAGES: FunnelStage[] = ['awareness', 'research', 'comparison', 'decision']
+
+function normalizeKeyword(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
-interface RelatedKeywordItem {
-  keyword: string
-  volume: number
-  kd: number
-  cpc: number
-}
-
-/** 手薄領域として提示するタグ数（件数昇順の下位N件を常時表示） */
-const WEAK_AREA_COUNT = 5
-
-const BAR_COLORS = [
-  '#0A2540', '#0080C0', '#0088CC', '#009AE0', '#00AEEE',
-  '#0E7490', '#0891B2', '#06B6D4', '#22D3EE', '#67E8F9',
-]
-
-function HorizontalBarChart({
-  items,
-  emptyLabel,
-}: {
-  items: { name: string; count: number }[]
-  emptyLabel: string
-}) {
-  const max = useMemo(() => Math.max(1, ...items.map(i => i.count)), [items])
-  const total = useMemo(() => items.reduce((s, i) => s + i.count, 0), [items])
-
-  if (items.length === 0) {
-    return (
-      <p className="text-sm text-[#94A3B8] py-8 text-center">{emptyLabel}</p>
-    )
-  }
-
-  return (
-    <div className="space-y-2.5">
-      {items.map((item, i) => {
-        const pct = total > 0 ? Math.round((item.count / total) * 100) : 0
-        return (
-          <div key={item.name} className="flex items-center gap-3">
-            <div className="w-44 flex-shrink-0 text-right">
-              <span className="text-[13px] font-medium text-[#334155] leading-tight break-all">
-                {item.name}
-              </span>
-            </div>
-            <div className="flex-1 flex items-center gap-2 min-w-0">
-              <div className="flex-1 h-6 rounded-md bg-[#F1F5F9] overflow-hidden">
-                <div
-                  className="h-full rounded-md transition-all duration-500"
-                  style={{
-                    width: `${Math.max(2, (item.count / max) * 100)}%`,
-                    backgroundColor: BAR_COLORS[i % BAR_COLORS.length],
-                  }}
-                />
-              </div>
-              <span className="w-20 flex-shrink-0 text-[13px] tabular-nums text-[#475569] font-semibold">
-                {item.count}件
-                <span className="text-[11px] font-normal text-[#94A3B8] ml-1">({pct}%)</span>
-              </span>
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
+function StatusPill({ article }: { article: ArticleSummary }) {
+  if (isPublished(article)) return <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">公開済み</span>
+  if (isScheduled(article)) return <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700">予約済み</span>
+  if (article.wordpressPostStatus === 'draft') return <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">WP下書き</span>
+  if (article.status === 'ready') return <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700">作成済み</span>
+  return <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">下書き</span>
 }
 
 export default function ArticleAnalyticsPage() {
   const router = useRouter()
+  const [articles, setArticles] = useState<ArticleSummary[]>([])
+  const [datasets, setDatasets] = useState<AhrefsDataset[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [categories, setCategories] = useState<WpCategoryListItem[]>([])
-  const [tags, setTags] = useState<WpTagListItem[]>([])
-  const [relatedKws, setRelatedKws] = useState<Record<string, RelatedKeywordItem[]>>({})
-  const [relatedLoading, setRelatedLoading] = useState(false)
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [catRes, tagRes] = await Promise.all([
-        fetch('/api/wordpress/categories?per_page=100', { cache: 'no-store' }),
-        fetch('/api/wordpress/tags?per_page=100', { cache: 'no-store' }),
+      const [articleResult, ahrefsResult] = await Promise.allSettled([
+        fetch('/api/articles?mode=summary', { cache: 'no-store' }).then(async response => {
+          const data = await response.json()
+          if (!response.ok) throw new Error(data.error || 'S3の記事データを取得できませんでした')
+          return data
+        }),
+        fetch('/api/ahrefs', { cache: 'no-store' }).then(async response => {
+          const data = await response.json()
+          if (!response.ok) throw new Error(data.error || 'Ahrefsデータを取得できませんでした')
+          return data
+        }),
       ])
-      const catData = await catRes.json()
-      const tagData = await tagRes.json()
 
-      if (!catRes.ok && !tagRes.ok) {
-        throw new Error(catData.error || tagData.error || 'データの取得に失敗しました')
+      if (articleResult.status === 'rejected') throw articleResult.reason
+      setArticles(Array.isArray(articleResult.value.articles) ? articleResult.value.articles : [])
+
+      if (ahrefsResult.status === 'fulfilled') {
+        setDatasets(Array.isArray(ahrefsResult.value.datasets) ? ahrefsResult.value.datasets : [])
+      } else {
+        setDatasets([])
       }
-
-      setCategories(Array.isArray(catData.categories) ? catData.categories : [])
-      setTags(Array.isArray(tagData.tags) ? tagData.tags : [])
-
-      if (!catRes.ok) setError(`カテゴリー取得エラー: ${catData.error ?? catRes.status}`)
-      else if (!tagRes.ok) setError(`タグ取得エラー: ${tagData.error ?? tagRes.status}`)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'データの取得に失敗しました')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'コンテンツデータの取得に失敗しました')
     } finally {
       setLoading(false)
     }
-  }
-
-  useEffect(() => {
-    void fetchData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const categoryItems = useMemo(
-    () =>
-      categories
-        .filter(c => (c.count ?? 0) > 0)
-        .map(c => ({ name: c.name, count: c.count ?? 0 }))
-        .sort((a, b) => b.count - a.count),
-    [categories]
-  )
+  useEffect(() => { void fetchData() }, [fetchData])
 
-  const tagItems = useMemo(
-    () =>
-      tags
-        .filter(t => (t.count ?? 0) > 0)
-        .map(t => ({ name: t.name, count: t.count ?? 0 }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 30),
-    [tags]
-  )
+  const classified = useMemo(() => articles.map(classifyArticle), [articles])
+  const published = useMemo(() => articles.filter(isPublished), [articles])
+  const totalWords = useMemo(() => articles.reduce((sum, article) => sum + (article.wordCount || 0), 0), [articles])
+  const topicRows = useMemo(() => [...CONTENT_TOPICS, { id: 'other' as const, label: 'その他', patterns: [] }].map(topic => ({
+    ...topic,
+    articles: classified.filter(article => article.topic === topic.id),
+  })), [classified])
 
-  const totalCategorized = useMemo(
-    () => categoryItems.reduce((s, c) => s + c.count, 0),
-    [categoryItems]
-  )
-  const activeTags = useMemo(() => tags.filter(t => (t.count ?? 0) > 0).length, [tags])
+  const stageRows = useMemo(() => STAGES.map(stage => ({
+    stage,
+    meta: FUNNEL_STAGES[stage],
+    articles: classified.filter(article => article.stage === stage),
+  })), [classified])
 
-  // 手薄領域: 使用中タグを件数昇順にソートして下位N件を常時表示
-  const weakTags = useMemo(
-    () =>
-      tags
-        .filter(t => (t.count ?? 0) > 0)
-        .map(t => ({ name: t.name, count: t.count ?? 0 }))
-        .sort((a, b) => a.count - b.count || a.name.localeCompare(b.name, 'ja'))
-        .slice(0, WEAK_AREA_COUNT),
-    [tags]
-  )
+  const qualityIssues = useMemo(() => {
+    const issues: { label: string; detail: string; articles: ArticleSummary[] }[] = []
+    const missingKeyword = articles.filter(article => !article.targetKeyword?.trim())
+    if (missingKeyword.length) issues.push({ label: 'ターゲットKW未設定', detail: '記事の意図・重複を判定できません', articles: missingKeyword })
 
-  // 手薄タグごとに Ahrefs から関連KW候補を取得
-  useEffect(() => {
-    if (weakTags.length === 0) return
-    let cancelled = false
-    const run = async () => {
-      setRelatedLoading(true)
-      try {
-        const results = await Promise.all(
-          weakTags.map(async t => {
-            try {
-              const res = await fetch(`/api/ahrefs/related?q=${encodeURIComponent(t.name)}&limit=3`, { cache: 'no-store' })
-              const data = await res.json()
-              return [t.name, Array.isArray(data.keywords) ? data.keywords as RelatedKeywordItem[] : []] as const
-            } catch {
-              return [t.name, []] as const
-            }
-          })
-        )
-        if (!cancelled) {
-          setRelatedKws(Object.fromEntries(results))
-        }
-      } finally {
-        if (!cancelled) setRelatedLoading(false)
-      }
+    const likelyTypo = articles.filter(article => normalizeKeyword(article.targetKeyword) === 'epr')
+    if (likelyTypo.length) issues.push({ label: 'KW表記の確認候補', detail: '「EPR」は「ERP」の入力誤りの可能性があります', articles: likelyTypo })
+
+    const groups = new Map<string, ArticleSummary[]>()
+    for (const article of articles) {
+      const keyword = normalizeKeyword(article.targetKeyword || '')
+      if (!keyword) continue
+      groups.set(keyword, [...(groups.get(keyword) ?? []), article])
     }
-    void run()
-    return () => { cancelled = true }
-  }, [weakTags])
+    for (const [keyword, group] of groups) {
+      if (group.length > 1) issues.push({ label: `重複候補: ${keyword}`, detail: '同一ターゲットKWの記事が複数あります', articles: group })
+    }
+    return issues.slice(0, 6)
+  }, [articles])
 
-  // 記事作成: KW分析ページと同じく kwTarget / kwPrompt をエディタへ渡す
-  const handleWriteArticle = useCallback(
-    (keyword: string, tagName: string, articleCount: number, kwData?: RelatedKeywordItem) => {
-      const prompt = buildKwPrompt({
-        keyword,
-        volume: kwData?.volume,
-        kd: kwData?.kd,
-        cpc: kwData?.cpc,
-        gap: { tagName, articleCount },
-      })
-      const params = new URLSearchParams({
-        kwTarget: keyword,
-        kwPrompt: prompt,
-      })
-      router.push(`/editor?${params.toString()}`)
-    },
-    [router]
-  )
+  const keywordGaps = useMemo(() => {
+    const existing = new Set(articles.map(article => normalizeKeyword(article.targetKeyword || '')).filter(Boolean))
+    const keywordDatasets = datasets.filter(dataset => dataset.type === 'keywords')
+    const scored = mergeAndAnalyze(keywordDatasets.map(dataset => dataset.keywords))
+    const unique = new Map<string, ScoredKeyword>()
+    for (const keyword of scored) {
+      const normalized = normalizeKeyword(keyword.keyword)
+      if (!normalized || existing.has(normalized) || unique.has(normalized) || keyword.priority < 2) continue
+      unique.set(normalized, keyword)
+    }
+    return Array.from(unique.values()).slice(0, 8)
+  }, [articles, datasets])
+
+  const handleWriteArticle = useCallback((keyword: ScoredKeyword) => {
+    const topic = topicLabel(classifyArticle({
+      id: 'candidate',
+      title: keyword.keyword,
+      refinedTitle: '',
+      targetKeyword: keyword.keyword,
+      status: 'draft',
+      createdAt: '',
+      wordCount: 0,
+      imageUrl: '',
+      excerpt: '',
+    }).topic)
+    const prompt = buildKwPrompt({
+      keyword: keyword.keyword,
+      volume: keyword.volume,
+      kd: keyword.kd,
+      cpc: keyword.cpc,
+      detectedCategory: keyword.detectedCategory,
+      priorityLabel: keyword.priority === 3 ? '★★★ 即攻め' : '★★ 有望',
+      score: keyword.opportunityScore,
+      gap: { tagName: topic, articleCount: 0 },
+    })
+    router.push(`/editor?${new URLSearchParams({ kwTarget: keyword.keyword, kwPrompt: prompt }).toString()}`)
+  }, [router])
 
   return (
-    <div className="w-full max-w-5xl py-8">
-      <div className="flex items-center justify-between mb-1">
-        <h1 className="text-2xl font-bold text-[#1A1A2E] flex items-center gap-2">
-          <PieChart size={24} className="text-[#009AE0]" />
-          記事分析
-        </h1>
-        <button
-          type="button"
-          onClick={() => void fetchData()}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-          style={{ backgroundColor: '#009AE0' }}
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          更新
+    <div className="w-full max-w-6xl py-8">
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-2">
+        <div>
+          <h1 className="text-2xl font-bold text-[#1A1A2E] flex items-center gap-2">
+            <BarChart3 size={24} className="text-[#009AE0]" />
+            コンテンツポートフォリオ
+          </h1>
+          <p className="mt-1 text-sm text-[#64748B]">
+            S3に保存された記事データを基に、テーマ・検討段階・次に作るべき記事を整理します。
+          </p>
+        </div>
+        <button type="button" onClick={() => void fetchData()} disabled={loading} className="inline-flex items-center gap-1.5 rounded-lg bg-[#009AE0] px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-[#0080C0] disabled:opacity-50">
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />更新
         </button>
       </div>
-      <p className="text-sm text-[#64748B] mb-8">
-        WordPress（RICE CLOUD公式サイト）のカテゴリー・タグ件数と連動し、投稿済み記事のテーマ分布を可視化します。
-      </p>
 
-      {error && (
-        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 flex items-start gap-2">
-          <AlertCircle size={16} className="text-red-500 mt-0.5 flex-shrink-0" />
-          <p className="text-sm text-red-700">{error}</p>
-        </div>
-      )}
-
-      {/* サマリーカード */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        <div className="rounded-xl border border-[#D0E3F0] bg-white p-5">
-          <p className="text-xs font-semibold text-[#64748B] mb-1">カテゴリー付き記事数（延べ）</p>
-          <p className="text-3xl font-black text-[#1A1A2E] tabular-nums">
-            {loading ? '—' : totalCategorized.toLocaleString()}
-            <span className="text-sm font-semibold text-[#94A3B8] ml-1">件</span>
-          </p>
-        </div>
-        <div className="rounded-xl border border-[#D0E3F0] bg-white p-5">
-          <p className="text-xs font-semibold text-[#64748B] mb-1">使用中カテゴリー数</p>
-          <p className="text-3xl font-black text-[#1A1A2E] tabular-nums">
-            {loading ? '—' : categoryItems.length.toLocaleString()}
-            <span className="text-sm font-semibold text-[#94A3B8] ml-1">個</span>
-          </p>
-        </div>
-        <div className="rounded-xl border border-[#D0E3F0] bg-white p-5">
-          <p className="text-xs font-semibold text-[#64748B] mb-1">使用中タグ数</p>
-          <p className="text-3xl font-black text-[#1A1A2E] tabular-nums">
-            {loading ? '—' : activeTags.toLocaleString()}
-            <span className="text-sm font-semibold text-[#94A3B8] ml-1">個</span>
-          </p>
-        </div>
+      <div className="mb-7 rounded-lg border border-[#B9E0F5] bg-[#EDF9FF] px-4 py-3 text-xs leading-relaxed text-[#24526A]">
+        WordPressのカテゴリ・タグ運用には依存せず、記事タイトル・対象KW・公開状態からRICE CLOUD独自のテーマと検討段階を自動分類しています。
       </div>
 
-      {/* 手薄領域と記事作成 */}
-      <div className="rounded-xl border border-[#D0E3F0] bg-white p-6 mb-6">
-        <h2 className="text-base font-bold text-[#1A1A2E] mb-1 flex items-center gap-2">
-          <Lightbulb size={18} className="text-[#E67E22]" />
-          手薄領域と記事作成
-        </h2>
-        <p className="text-xs text-[#94A3B8] mb-5">
-          記事数が少ないタグ領域（下位{WEAK_AREA_COUNT}件）です。KW候補から記事を作成すると、カテゴリー網羅性を強化できます。ボタンを押すと記事作成ページにキーワードとプロンプトが引き継がれます。
-        </p>
-        {loading ? (
-          <p className="text-sm text-[#94A3B8] py-8 text-center">読み込み中...</p>
-        ) : weakTags.length === 0 ? (
-          <p className="text-sm text-[#94A3B8] py-8 text-center">タグデータがありません</p>
-        ) : (
-          <div className="space-y-4">
-            {weakTags.map(t => {
-              const candidates = relatedKws[t.name] ?? []
-              return (
-                <div
-                  key={t.name}
-                  className="rounded-lg border border-[#D0E3F0] bg-[#FAFBFC] px-4 py-3.5"
-                >
-                  <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-orange-50 text-[#E67E22] border border-orange-200">
-                        {t.count}件のみ
-                      </span>
-                      <span className="text-sm font-bold text-[#1A1A2E]">{t.name}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleWriteArticle(t.name, t.name, t.count)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold text-[#0080C0] border border-[#0080C0] bg-white transition-colors hover:bg-[#0080C0] hover:text-white"
-                    >
-                      <FileEdit size={13} />
-                      タグ名で記事作成
-                    </button>
-                  </div>
+      {error && <div className="mb-6 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><AlertCircle size={16} className="mt-0.5 flex-shrink-0" />{error}</div>}
 
-                  {relatedLoading ? (
-                    <p className="text-xs text-[#94A3B8]">KW候補を検索中...</p>
-                  ) : candidates.length > 0 ? (
-                    <div className="space-y-1.5">
-                      <p className="text-[11px] font-semibold text-[#64748B]">Ahrefsデータからの候補KW:</p>
-                      {candidates.map(c => (
-                        <div
-                          key={c.keyword}
-                          className="flex items-center justify-between flex-wrap gap-2 rounded-md bg-white border border-[#D0E3F0] px-3 py-2"
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className="text-[13px] font-medium text-[#334155] break-all">{c.keyword}</span>
-                            <span className="text-[11px] text-[#94A3B8] tabular-nums flex-shrink-0">
-                              vol {c.volume.toLocaleString()} / KD {c.kd}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleWriteArticle(c.keyword, t.name, t.count, c)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold text-white transition-opacity hover:opacity-90 flex-shrink-0"
-                            style={{ backgroundColor: '#009AE0' }}
-                          >
-                            <FileEdit size={12} />
-                            このKWで記事作成
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-[#94A3B8]">
-                      Ahrefsデータに該当KWなし。「タグ名で記事作成」をご利用ください。
-                    </p>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
+      <div className="mb-7 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          { label: '管理記事数', value: articles.length, suffix: '件', color: '#1A1A2E' },
+          { label: '公開済み', value: published.length, suffix: '件', color: '#16A34A' },
+          { label: '総文字数', value: totalWords.toLocaleString(), suffix: '字', color: '#009AE0' },
+          { label: '品質確認候補', value: qualityIssues.length, suffix: '件', color: qualityIssues.length ? '#E67E22' : '#64748B' },
+        ].map(card => <div key={card.label} className="rounded-xl border border-[#D0E3F0] bg-white p-4">
+          <p className="text-[11px] font-semibold text-[#64748B]">{card.label}</p>
+          <p className="mt-1 text-3xl font-black tabular-nums" style={{ color: card.color }}>{loading ? '—' : card.value}<span className="ml-1 text-xs font-semibold text-[#94A3B8]">{card.suffix}</span></p>
+        </div>)}
       </div>
 
-      {/* カテゴリー別グラフ */}
-      <div className="rounded-xl border border-[#D0E3F0] bg-white p-6 mb-6">
-        <h2 className="text-base font-bold text-[#1A1A2E] mb-5 flex items-center gap-2">
-          <FolderTree size={18} className="text-[#009AE0]" />
-          カテゴリー別 記事数
-        </h2>
-        {loading ? (
-          <p className="text-sm text-[#94A3B8] py-8 text-center">読み込み中...</p>
-        ) : (
-          <HorizontalBarChart
-            items={categoryItems}
-            emptyLabel="カテゴリーデータがありません"
-          />
-        )}
+      <section className="mb-6 rounded-xl border border-[#D0E3F0] bg-white p-5">
+        <div className="mb-5 flex items-center gap-2"><Target size={18} className="text-[#009AE0]" /><div><h2 className="font-bold text-[#1A1A2E]">テーマ × 検討段階</h2><p className="text-[11px] text-[#94A3B8]">記事の偏りと、次に強化するテーマを確認できます。</p></div></div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] border-separate border-spacing-0 text-sm">
+            <thead><tr className="text-left text-[11px] text-[#64748B]"><th className="border-b border-[#D0E3F0] px-3 py-2 font-semibold">テーマ</th>{STAGES.map(stage => <th key={stage} className="border-b border-[#D0E3F0] px-3 py-2 text-center font-semibold">{FUNNEL_STAGES[stage].label}</th>)}<th className="border-b border-[#D0E3F0] px-3 py-2 text-center font-semibold">合計</th></tr></thead>
+            <tbody>{topicRows.map(row => {
+              const total = row.articles.length
+              return <tr key={row.id} className="hover:bg-[#F8FCFF]"><td className="border-b border-[#E7F0F6] px-3 py-3 font-semibold text-[#334155]">{row.label}</td>{STAGES.map(stage => {
+                const count = row.articles.filter(article => article.stage === stage).length
+                return <td key={stage} className="border-b border-[#E7F0F6] px-3 py-3 text-center"><span className={`inline-flex min-w-8 justify-center rounded-md px-2 py-1 text-xs font-bold ${count ? 'bg-[#E6F5FC] text-[#0080C0]' : 'bg-[#F5F7F9] text-[#A0AEC0]'}`}>{count}</span></td>
+              })}<td className="border-b border-[#E7F0F6] px-3 py-3 text-center font-black text-[#1A1A2E]">{total}</td></tr>
+            })}</tbody>
+          </table>
+        </div>
+      </section>
+
+      <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <section className="rounded-xl border border-[#D0E3F0] bg-white p-5">
+          <div className="mb-4 flex items-center gap-2"><FileText size={18} className="text-[#009AE0]" /><div><h2 className="font-bold text-[#1A1A2E]">検討段階の構成</h2><p className="text-[11px] text-[#94A3B8]">ファネルのどこに記事が集中しているかを表示します。</p></div></div>
+          <div className="space-y-3">{stageRows.map(row => {
+            const pct = articles.length ? Math.round(row.articles.length / articles.length * 100) : 0
+            return <div key={row.stage}><div className="mb-1 flex justify-between text-xs"><span className="font-bold text-[#334155]">{row.meta.label}<span className="ml-2 font-normal text-[#94A3B8]">{row.meta.description}</span></span><span className="font-bold text-[#1A1A2E]">{row.articles.length}件</span></div><div className="h-2.5 overflow-hidden rounded-full bg-[#EDF2F7]"><div className="h-full rounded-full" style={{ width: `${pct}%`, background: row.meta.color }} /></div></div>
+          })}</div>
+        </section>
+
+        <section className="rounded-xl border border-[#D0E3F0] bg-white p-5">
+          <div className="mb-4 flex items-center gap-2"><AlertCircle size={18} className="text-[#E67E22]" /><div><h2 className="font-bold text-[#1A1A2E]">品質・運用チェック</h2><p className="text-[11px] text-[#94A3B8]">対象KWの不足・重複候補を確認します。</p></div></div>
+          {qualityIssues.length === 0 ? <p className="flex items-center gap-2 py-7 text-sm text-emerald-700"><CheckCircle2 size={17} />現在、確認が必要な項目はありません。</p> : <div className="space-y-2">{qualityIssues.map(issue => <div key={issue.label} className="rounded-lg border border-[#F5D9B5] bg-[#FFF9F0] px-3 py-2.5"><p className="text-xs font-bold text-[#A95809]">{issue.label}</p><p className="mt-0.5 text-[11px] text-[#64748B]">{issue.detail}（{issue.articles.length}件）</p></div>)}</div>}
+        </section>
       </div>
 
-      {/* タグ別グラフ */}
-      <div className="rounded-xl border border-[#D0E3F0] bg-white p-6">
-        <h2 className="text-base font-bold text-[#1A1A2E] mb-1 flex items-center gap-2">
-          <Hash size={18} className="text-[#009AE0]" />
-          タグ別 記事数（上位30）
-        </h2>
-        <p className="text-xs text-[#94A3B8] mb-5">
-          どのテーマの記事が多く投稿されているかの分布です。少ないタグ領域が今後のKW候補になります。
-        </p>
-        {loading ? (
-          <p className="text-sm text-[#94A3B8] py-8 text-center">読み込み中...</p>
-        ) : (
-          <HorizontalBarChart
-            items={tagItems}
-            emptyLabel="タグデータがありません"
-          />
-        )}
-      </div>
+      <section className="rounded-xl border border-[#D0E3F0] bg-white p-5">
+        <div className="mb-1 flex items-center gap-2"><Lightbulb size={18} className="text-[#E67E22]" /><h2 className="font-bold text-[#1A1A2E]">次に作るべき記事</h2></div>
+        <p className="mb-4 text-[11px] text-[#94A3B8]">Ahrefsの「有望・即攻め」KWのうち、S3の記事データに未登録のものを表示します。</p>
+        {datasets.length === 0 ? <p className="rounded-lg bg-[#F8FAFC] px-4 py-6 text-center text-sm text-[#94A3B8]">Ahrefsの重点KWデータを取得すると、記事ギャップを提案できます。</p> : keywordGaps.length === 0 ? <p className="rounded-lg bg-[#F8FAFC] px-4 py-6 text-center text-sm text-[#94A3B8]">優先度の高い未作成KWは見つかりませんでした。</p> : <div className="divide-y divide-[#E7F0F6]">{keywordGaps.map(keyword => <div key={keyword.keyword} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><div className="flex items-center gap-2"><p className="text-sm font-bold text-[#1A1A2E]">{keyword.keyword}</p><span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">{keyword.priority === 3 ? '★★★ 即攻め' : '★★ 有望'}</span></div><p className="mt-1 text-[11px] text-[#64748B]">Vol {keyword.volume.toLocaleString()} / KD {keyword.kd} / {keyword.detectedCategory}</p></div><button type="button" onClick={() => handleWriteArticle(keyword)} className="inline-flex items-center gap-1.5 rounded-md border border-[#009AE0] px-3 py-1.5 text-xs font-bold text-[#0080C0] hover:bg-[#009AE0] hover:text-white"><FileEdit size={13} />このKWで記事作成</button></div>)}</div>}
+      </section>
     </div>
   )
 }
