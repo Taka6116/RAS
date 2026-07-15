@@ -9,7 +9,7 @@
  * 設定・実行履歴は S3 の automation/auto-draft.json に保存する。
  */
 
-import { getS3ObjectAsText, getS3ObjectsAsTextBatch, listS3Objects, putS3Object } from './s3Reference'
+import { getS3ObjectAsBuffer, getS3ObjectAsText, getS3ObjectsAsTextBatch, listS3Objects, putS3Object } from './s3Reference'
 import { analyzeKeywords } from './ahrefsAnalyzer'
 import { buildKwPrompt } from './kwPromptBuilder'
 import { generateFirstDraftFromPrompt, refineArticleWithGemini, generateSlugFromGemini } from './api/gemini'
@@ -37,6 +37,8 @@ export interface AutoDraftRun {
   articleId?: string
   articleTitle?: string
   wordpressUrl?: string
+  /** アイキャッチに使ったインポート画像のID（直近との重複回避に使用） */
+  imageId?: string
   error?: string
 }
 
@@ -269,6 +271,71 @@ export async function selectTargetKeyword(config: AutoDraftConfig): Promise<Sele
   throw new Error('選定できるキーワードがありません。KW分析ページでAhrefsデータを取得するか、競合分析でKWを更新してください。')
 }
 
+// ── アイキャッチ画像の選定 ────────────────────────────────
+
+const IMPORTED_IMAGES_PREFIX = 'images/imported/'
+/** この回数分の直近実行で使った画像は再利用しない */
+const IMAGE_REUSE_LOOKBACK = 5
+
+interface ImportedImageMeta {
+  id: string
+  key: string
+  title?: string
+  filename?: string
+}
+
+interface SelectedImage {
+  id: string
+  base64: string
+  mimeType: string
+}
+
+/**
+ * 画像ページのインポート画像からランダムに1枚選ぶ。
+ * 直近5回の実行で使った画像は除外し、なるべくばらけるようにする。
+ * （全画像が直近使用済みの場合は全体から選び直す）
+ */
+async function pickImportedImage(history: AutoDraftRun[]): Promise<SelectedImage | null> {
+  try {
+    const objects = await listS3Objects(IMPORTED_IMAGES_PREFIX)
+    const metaKeys = objects.filter(o => o.key.endsWith('.json')).map(o => o.key)
+    if (metaKeys.length === 0) return null
+    const contents = await getS3ObjectsAsTextBatch(metaKeys)
+    const metas: ImportedImageMeta[] = []
+    for (const obj of contents) {
+      try {
+        const meta = JSON.parse(obj.content) as ImportedImageMeta
+        if (meta.id && meta.key) metas.push(meta)
+      } catch { /* skip malformed */ }
+    }
+    if (metas.length === 0) return null
+
+    const recentlyUsed = new Set(
+      history
+        .filter(h => h.imageId)
+        .slice(0, IMAGE_REUSE_LOOKBACK)
+        .map(h => h.imageId!)
+    )
+    const candidates = metas.filter(m => !recentlyUsed.has(m.id))
+    const pool = candidates.length > 0 ? candidates : metas
+    const chosen = pool[Math.floor(Math.random() * pool.length)]!
+
+    const image = await getS3ObjectAsBuffer(chosen.key)
+    if (!image) return null
+    const ext = chosen.key.includes('.') ? chosen.key.slice(chosen.key.lastIndexOf('.') + 1).toLowerCase() : 'jpg'
+    const mimeType = image.contentType
+      ?? (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg')
+    return {
+      id: chosen.id,
+      base64: Buffer.from(image.body).toString('base64'),
+      mimeType,
+    }
+  } catch (e) {
+    console.warn('[autoDraft] アイキャッチ画像の選定に失敗（画像なしで続行）:', (e as Error)?.message)
+    return null
+  }
+}
+
 // ── 記事生成コンテキスト ────────────────────────────────
 
 /**
@@ -356,7 +423,10 @@ export async function runAutoDraft(trigger: 'cron' | 'manual'): Promise<AutoDraf
     const { refinedTitle, refinedContent } = await refineArticleWithGemini(title, content, selected.keyword)
     const slug = await generateSlugFromGemini(refinedTitle || title, selected.keyword, refinedContent)
 
-    // 4. SavedArticle をS3保存
+    // 4. アイキャッチ画像: インポート画像からランダム選定（直近5回使用分は除外）
+    const image = await pickImportedImage(config.history)
+
+    // 5. SavedArticle をS3保存
     const articleId = `auto-${Date.now()}`
     const article: SavedArticle = {
       id: articleId,
@@ -365,7 +435,7 @@ export async function runAutoDraft(trigger: 'cron' | 'manual'): Promise<AutoDraf
       targetKeyword: selected.keyword,
       originalContent: content,
       refinedContent,
-      imageUrl: '',
+      imageUrl: image ? `data:${image.mimeType};base64,${image.base64}` : '',
       status: 'draft',
       createdAt: ranAt,
       slug,
@@ -373,13 +443,14 @@ export async function runAutoDraft(trigger: 'cron' | 'manual'): Promise<AutoDraf
     }
     await putS3Object(`${ARTICLES_PREFIX}${articleId}.json`, JSON.stringify(article))
 
-    // 5. WordPressへ下書き投稿
+    // 6. WordPressへ下書き投稿（画像があればアイキャッチとしてアップロード）
     const wpResult = await postToWordPress(
       {
         title: refinedTitle || title,
         content: refinedContent,
         targetKeyword: selected.keyword,
         slug,
+        ...(image ? { imageBase64: image.base64, imageBase64MimeType: image.mimeType } : {}),
       },
       'draft'
     )
@@ -396,6 +467,7 @@ export async function runAutoDraft(trigger: 'cron' | 'manual'): Promise<AutoDraf
       articleId,
       articleTitle: refinedTitle || title,
       wordpressUrl: wpResult.link,
+      imageId: image?.id,
     })
   } catch (error) {
     console.error('[autoDraft] 実行に失敗:', error)

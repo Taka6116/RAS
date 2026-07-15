@@ -1038,7 +1038,7 @@ function AutoDraftPanel() {
               自動下書き投稿は{config.enabled ? '有効' : '停止中'}です
             </p>
             <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>
-              AIがAhrefs・競合分析・既存記事のデータからターゲットKWを自動選定し、記事を生成してWordPressに下書き投稿します
+              AIがAhrefs・競合分析・既存記事のデータからターゲットKWを自動選定し、記事を生成してWordPressに下書き投稿します。アイキャッチは画像ページのインポート画像からランダムに設定されます（直近5回に使った画像は除外）
             </p>
           </div>
         </div>
