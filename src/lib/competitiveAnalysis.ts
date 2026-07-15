@@ -195,11 +195,11 @@ export const DEFAULT_COMPETITORS: CompetitorConfig[] = [
     id: 'superstream',
     name: 'SuperStream',
     // superstream.canon-its.co.jp は現存せず（ENOTFOUND）。
-    // 製品ページは canon-its.co.jp 配下の /products/superstream/ にある。
+    // 製品トップは canon-its.co.jp 配下の /solution/industry/cross-industry/superstream。
     domain: 'canon-its.co.jp',
     type: 'indirect',
     note: '会計・人事給与に強い国産パッケージ。会計領域KWで競合。',
-    urls: [{ url: 'https://www.canon-its.co.jp/products/superstream/', label: 'SuperStream 製品ページ' }],
+    urls: [{ url: 'https://www.canon-its.co.jp/solution/industry/cross-industry/superstream', label: 'SuperStream 製品トップ' }],
   },
 ]
 
@@ -305,12 +305,16 @@ function migrateCompetitorConfig(config: CompetitorConfig[]): CompetitorConfig[]
     if (c.id === 'moneyforward' && c.domain === 'moneyforward.com') {
       return { ...c, domain: 'biz.moneyforward.com' }
     }
-    // 旧SuperStream設定（存在しないドメイン）を現行の製品ページへ寄せる
-    if (c.id === 'superstream' && c.domain === 'superstream.canon-its.co.jp') {
+    // 旧SuperStream設定（存在しないドメイン・404だった旧パス）を現行の製品トップへ寄せる
+    if (
+      c.id === 'superstream' &&
+      (c.domain === 'superstream.canon-its.co.jp' ||
+        c.urls.some(u => u.url.includes('/products/superstream')))
+    ) {
       return {
         ...c,
         domain: 'canon-its.co.jp',
-        urls: [{ url: 'https://www.canon-its.co.jp/products/superstream/', label: 'SuperStream 製品ページ' }],
+        urls: [{ url: 'https://www.canon-its.co.jp/solution/industry/cross-industry/superstream', label: 'SuperStream 製品トップ' }],
       }
     }
     return c
@@ -406,6 +410,11 @@ export async function fetchCompetitorPage(
         ? '接続タイムアウト'
         : (e instanceof Error ? e.message : '不明なエラー')
     throw new Error(`${page.url} の取得に失敗: ${reason}`)
+  }
+  // 404等のエラーページを分析対象にするとAIが「確認できませんでした」を返すだけなので、
+  // ここで明示的に失敗させてURLの誤りに気づけるようにする
+  if (!response.ok) {
+    throw new Error(`${page.url} がHTTP ${response.status}を返しました（ページが移転・削除された可能性）`)
   }
   const html = await response.text()
   const body = html
@@ -669,7 +678,7 @@ JSONのみを返してください。末尾カンマは禁止です。
  "summary":"3〜5文",
  "observedFacts":["競合の観測事実（出典に基づく）"],
  "opportunities":["自社が取るべき差別化機会"],
- "positioning":{"xAxis":"2軸の横軸","yAxis":"2軸の縦軸","points":[{"name":"RICE CLOUD","x":50,"y":50,"rationale":"根拠","isSelf":true},{"name":"競合名","x":50,"y":50,"rationale":"根拠"}],"whitespace":"空白領域と狙い"},
+ "positioning":{"xAxis":"横軸名(低い側→高い側)の形式 例: ターゲット企業規模(小→大)","yAxis":"縦軸名(低い側→高い側)の形式","points":[{"name":"RICE CLOUD","x":50,"y":50,"rationale":"根拠","isSelf":true},{"name":"競合名","x":50,"y":50,"rationale":"根拠"}],"whitespace":"空白領域と狙い。必ず座標範囲を(x:60-80, y:70-90)の形式で文中に含める"},
  "funnelCoverage":[{"phase":"awareness|research|comparison|decision","self":"自社の現状","competitor":"競合の強み","implication":"打ち手"}],
  "actions":[{"title":"20字以内","description":"具体施策","priority":"high|medium|low","phase":"awareness|research|comparison|decision","category":"訴求|コンテンツ|SEO|CV導線|サイト改善|その他","target":"対象URLまたはKW","kpi":"追うKPI"}],
  "caveats":["データの限界"]

@@ -98,6 +98,32 @@ function asPercent(value: number) {
   return `${Math.round(value)}%`
 }
 
+/**
+ * AIが返す軸ラベル「ターゲット企業規模(小→大)」を
+ * { name: '企業規模', low: '小', high: '大' } に分解する。
+ * 括弧・矢印がない場合は低い/高いで代替する。
+ */
+function parseAxisLabel(raw: string): { name: string; low: string; high: string } {
+  const m = raw.match(/^(.*?)[（(]\s*(.+?)\s*(?:→|⇒|➔|〜|~)\s*(.+?)\s*[)）]\s*$/)
+  if (m) return { name: m[1]!.trim() || raw, low: m[2]!.trim(), high: m[3]!.trim() }
+  return { name: raw, low: '低い', high: '高い' }
+}
+
+/**
+ * 空白領域テキストに「x:60-80」「y:70-90」形式の座標が含まれる場合に抽出する。
+ * 見つからなければ null（ゾーンの描画をスキップ）。
+ */
+function parseWhitespaceZone(text: string): { x1: number; x2: number; y1: number; y2: number } | null {
+  const x = text.match(/x\s*[:：]\s*(\d{1,3})\s*[-–〜~]\s*(\d{1,3})/i)
+  const y = text.match(/y\s*[:：]\s*(\d{1,3})\s*[-–〜~]\s*(\d{1,3})/i)
+  if (!x || !y) return null
+  const clamp = (n: number) => Math.max(0, Math.min(100, n))
+  return {
+    x1: clamp(Number(x[1])), x2: clamp(Number(x[2])),
+    y1: clamp(Number(y[1])), y2: clamp(Number(y[2])),
+  }
+}
+
 export default function CompetitiveAnalysisPage() {
   const [config, setConfig] = useState<CompetitorConfig[]>([])
   const [document, setDocument] = useState<CompetitiveAnalysisDocument>({ updatedAt: '', competitors: {} })
@@ -555,23 +581,86 @@ export default function CompetitiveAnalysisPage() {
               </div>
 
               <div className="rounded-[16px] p-6" style={{ background: '#FFFFFF', border: '1px solid #D0E3F0' }}>
-                <h2 className="font-bold mb-1" style={{ color: '#1A1A2E' }}>ポジショニングマップ</h2>
-                <p className="text-[12px] mb-4" style={{ color: '#64748B' }}>横軸: {report.positioning.xAxis} ／ 縦軸: {report.positioning.yAxis}</p>
-                <div className="relative h-[300px] rounded-[12px] overflow-hidden" style={{ background: 'linear-gradient(135deg, #f8fbff, #f6f3ff)', border: '1px solid #D0E3F0' }}>
-                  <div className="absolute left-1/2 top-0 bottom-0 border-l" style={{ borderColor: 'rgba(20,44,92,0.14)' }} />
-                  <div className="absolute top-1/2 left-0 right-0 border-t" style={{ borderColor: 'rgba(20,44,92,0.14)' }} />
-                  <span className="absolute left-3 bottom-2 text-[10px]" style={{ color: '#94A3B8' }}>低い</span>
-                  <span className="absolute right-3 bottom-2 text-[10px]" style={{ color: '#94A3B8' }}>高い</span>
-                  <span className="absolute left-3 top-2 text-[10px]" style={{ color: '#94A3B8' }}>高い</span>
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px]" style={{ color: '#94A3B8' }}>低い</span>
-                  {report.positioning.points.map(point => (
-                    <div key={point.name} className="absolute -translate-x-1/2 translate-y-1/2 group" style={{ left: `${Math.max(5, Math.min(95, point.x))}%`, bottom: `${Math.max(8, Math.min(94, point.y))}%` }}>
-                      <div className="rounded-full px-2.5 py-1 text-[11px] font-bold text-white whitespace-nowrap" style={{ background: point.isSelf ? '#0A2540' : '#64748b', boxShadow: '0 3px 8px rgba(10,30,80,0.18)' }}>{point.name}</div>
-                      <div className="hidden group-hover:block absolute z-10 left-1/2 -translate-x-1/2 mt-1 w-48 p-2 rounded-[8px] text-[10px] leading-relaxed" style={{ background: '#1A1A2E', color: 'white' }}>{point.rationale}</div>
-                    </div>
-                  ))}
-                </div>
-                <p className="mt-3 text-[12px] leading-relaxed" style={{ color: '#64748B' }}><strong>狙う空白領域:</strong> {report.positioning.whitespace}</p>
+                {(() => {
+                  const xAxis = parseAxisLabel(report.positioning.xAxis)
+                  const yAxis = parseAxisLabel(report.positioning.yAxis)
+                  const zone = parseWhitespaceZone(report.positioning.whitespace)
+                  return (
+                    <>
+                      <h2 className="font-bold mb-1" style={{ color: '#1A1A2E' }}>ポジショニングマップ</h2>
+                      <p className="text-[12px] mb-4" style={{ color: '#64748B' }}>
+                        横軸: {xAxis.name}（{xAxis.low} → {xAxis.high}）／ 縦軸: {yAxis.name}（{yAxis.low} → {yAxis.high}）
+                      </p>
+                      {/* 縦軸ラベル（左）＋マップ本体 */}
+                      <div className="flex gap-2">
+                        <div className="hidden sm:flex flex-col items-center justify-between py-1 w-6 flex-shrink-0">
+                          <span className="text-[10px] font-bold whitespace-nowrap" style={{ color: '#64748B', writingMode: 'vertical-rl' }}>{yAxis.high}</span>
+                          <span className="text-[10px] font-bold whitespace-nowrap" style={{ color: '#0A2540', writingMode: 'vertical-rl' }}>{yAxis.name}</span>
+                          <span className="text-[10px] font-bold whitespace-nowrap" style={{ color: '#64748B', writingMode: 'vertical-rl' }}>{yAxis.low}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="relative h-[340px] rounded-[12px] overflow-hidden" style={{ background: 'linear-gradient(135deg, #f8fbff, #f6f3ff)', border: '1px solid #D0E3F0' }}>
+                            {/* 狙う空白領域（AI出力に座標が含まれる場合のみ描画） */}
+                            {zone && (
+                              <div
+                                className="absolute rounded-[8px] flex items-start justify-end p-1.5"
+                                style={{
+                                  left: `${Math.min(zone.x1, zone.x2)}%`,
+                                  width: `${Math.abs(zone.x2 - zone.x1)}%`,
+                                  bottom: `${Math.min(zone.y1, zone.y2)}%`,
+                                  height: `${Math.abs(zone.y2 - zone.y1)}%`,
+                                  background: 'rgba(0,154,224,0.08)',
+                                  border: '2px dashed rgba(0,154,224,0.45)',
+                                }}
+                              >
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(0,154,224,0.85)', color: 'white' }}>狙う空白領域</span>
+                              </div>
+                            )}
+                            {/* 4象限の補助線 */}
+                            <div className="absolute left-1/2 top-0 bottom-0 border-l" style={{ borderColor: 'rgba(20,44,92,0.14)' }} />
+                            <div className="absolute top-1/2 left-0 right-0 border-t" style={{ borderColor: 'rgba(20,44,92,0.14)' }} />
+                            {/* プロット（自社はブランド色＋大きめ、競合はグレー） */}
+                            {report.positioning.points.map(point => (
+                              <div key={point.name} className="absolute -translate-x-1/2 translate-y-1/2 group flex flex-col items-center" style={{ left: `${Math.max(6, Math.min(94, point.x))}%`, bottom: `${Math.max(8, Math.min(92, point.y))}%` }}>
+                                <div
+                                  className={`rounded-full whitespace-nowrap font-bold text-white ${point.isSelf ? 'px-3 py-1.5 text-[12px]' : 'px-2.5 py-1 text-[11px]'}`}
+                                  style={{
+                                    background: point.isSelf ? 'linear-gradient(135deg, #009AE0, #0A2540)' : '#64748b',
+                                    boxShadow: point.isSelf ? '0 4px 12px rgba(0,120,200,0.35)' : '0 3px 8px rgba(10,30,80,0.18)',
+                                    border: point.isSelf ? '2px solid white' : 'none',
+                                  }}
+                                >
+                                  {point.name}
+                                </div>
+                                <div className="hidden group-hover:block absolute z-10 top-full left-1/2 -translate-x-1/2 mt-1 w-52 p-2 rounded-[8px] text-[10px] leading-relaxed" style={{ background: '#1A1A2E', color: 'white' }}>{point.rationale}</div>
+                              </div>
+                            ))}
+                          </div>
+                          {/* 横軸ラベル（下） */}
+                          <div className="flex items-center justify-between mt-1.5 px-1">
+                            <span className="text-[10px] font-bold" style={{ color: '#64748B' }}>← {xAxis.low}</span>
+                            <span className="text-[10px] font-bold" style={{ color: '#0A2540' }}>{xAxis.name}</span>
+                            <span className="text-[10px] font-bold" style={{ color: '#64748B' }}>{xAxis.high} →</span>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-[12px] leading-relaxed" style={{ color: '#64748B' }}><strong style={{ color: '#0080C0' }}>狙う空白領域:</strong> {report.positioning.whitespace}</p>
+                      {/* 各プロットの根拠一覧（ホバー不要で読める） */}
+                      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {report.positioning.points.map(point => (
+                          <div key={point.name} className="flex items-start gap-2 rounded-[10px] px-3 py-2" style={{ background: point.isSelf ? 'rgba(0,154,224,0.06)' : '#FAFCFE', border: `1px solid ${point.isSelf ? 'rgba(0,154,224,0.35)' : '#E8F0F7'}` }}>
+                            <span className="mt-[3px] inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: point.isSelf ? '#009AE0' : '#64748b' }} />
+                            <p className="text-[11px] leading-relaxed" style={{ color: '#334155' }}>
+                              <strong style={{ color: '#1A1A2E' }}>{point.name}</strong>
+                              <span className="mx-1" style={{ color: '#CBD5E1' }}>—</span>
+                              {point.rationale}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )
+                })()}
               </div>
 
               <div className="rounded-[16px] p-6" style={{ background: '#FFFFFF', border: '1px solid #D0E3F0' }}>
