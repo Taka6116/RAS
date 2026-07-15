@@ -61,11 +61,15 @@ function publishedDate(article: SavedArticle): string {
   return (article.scheduledDate || article.createdAt || '').slice(0, 10)
 }
 
+/**
+ * 実際に公開（今すぐ公開・予約公開）された記事のみを対象にする。
+ * wordpressUrl は下書き保存でもWordPress側の投稿レコードが作られ発行されるため、
+ * 単独では公開判定に使わない（status/wordpressPostStatusのみで判定）。
+ */
 function isTrackable(article: SavedArticle): boolean {
   if (!article.targetKeyword?.trim()) return false
   return (
     article.status === 'published' ||
-    Boolean(article.wordpressUrl) ||
     article.wordpressPostStatus === 'publish' ||
     article.wordpressPostStatus === 'future'
   )
