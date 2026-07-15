@@ -108,6 +108,32 @@ export interface StrategyAction {
   kpi: string
 }
 
+export interface ActionPlanStep {
+  /** 手順の見出し（例: 競合LPの訴求を棚卸し） */
+  title: string
+  /** 具体的な作業内容 */
+  detail: string
+  /** この手順の成果物（例: 比較表, ワイヤーフレーム） */
+  deliverable: string
+}
+
+/** 施策カードをクリックしたときに展開する実行手順 */
+export interface ActionPlan {
+  actionTitle: string
+  /** この施策のゴール（1〜2文） */
+  goal: string
+  /** 実行手順（3〜7ステップ） */
+  steps: ActionPlanStep[]
+  /** 必要なリソース・ツール・関係者 */
+  resources: string[]
+  /** 完了の判断基準 */
+  successCriteria: string
+  /** 目安の期間（例: 2〜3週間） */
+  estimatedPeriod: string
+  /** つまずきやすい点・注意 */
+  risks: string[]
+}
+
 export interface CompetitiveStrategyReport {
   generatedAt: string
   summary: string
@@ -711,4 +737,72 @@ JSONのみを返してください。末尾カンマは禁止です。
 
 export async function getAhrefsUsage() {
   return fetchApiUsage()
+}
+
+interface ActionPlanResponse {
+  goal?: string
+  steps?: Array<{ title?: string; detail?: string; deliverable?: string }>
+  resources?: string[]
+  successCriteria?: string
+  estimatedPeriod?: string
+  risks?: string[]
+}
+
+/**
+ * 施策カード1件について、具体的な実行手順（ToDo）をオンデマンド生成する。
+ * 戦略レポート全体のサマリーをコンテキストに与え、RICE CLOUDの実務に落ちる
+ * 手順・成果物・完了基準・期間・注意点まで構造化して返す。
+ */
+export async function generateActionPlan(action: StrategyAction): Promise<ActionPlan> {
+  const doc = await loadCompetitiveAnalysis()
+  const reportSummary = doc.report?.summary ?? ''
+  const parsed = await generateJson<ActionPlanResponse>(`あなたはERP/SaaS導入支援会社「株式会社RICE CLOUD（ライスクラウド）」のマーケ戦略ディレクターです。
+以下の「施策」を、担当者がそのまま着手できる具体的な実行手順（ToDo）に分解してください。
+一般論（丁寧に、質を高く等）は禁止。対象ページ/KW/ツール/成果物まで具体化してください。
+RICE CLOUDの強み: アジャイル型ERP導入・導入失敗案件のリカバリー実績・NetSuite/Dynamics 365/Power Platform実装力。
+※GA4/Search Consoleは未連携のため、実測が前提の手順には「要計測環境」と補足してください。
+
+## 全体戦略サマリー
+${reportSummary || '（サマリー未取得）'}
+
+## 対象の施策
+タイトル: ${action.title}
+概要: ${action.description}
+カテゴリ: ${action.category}
+ファネル段階: ${action.phase}
+対象(URL/KW): ${action.target}
+追うKPI: ${action.kpi}
+
+出力は簡潔に。stepsは3〜7件、各detailは120字以内、resources/risksは各4件以内。文字列中の改行は禁止。
+JSONのみを返してください。末尾カンマは禁止です。
+{
+ "goal":"この施策のゴール（1〜2文）",
+ "steps":[{"title":"手順の見出し(20字以内)","detail":"具体的な作業内容","deliverable":"成果物"}],
+ "resources":["必要なリソース・ツール・関係者"],
+ "successCriteria":"完了の判断基準（定量的に）",
+ "estimatedPeriod":"目安期間（例: 2〜3週間）",
+ "risks":["つまずきやすい点・注意"]
+}`, 4_000)
+
+  const steps: ActionPlanStep[] = Array.isArray(parsed.steps)
+    ? parsed.steps
+        .filter(s => s && (typeof s.title === 'string' || typeof s.detail === 'string'))
+        .map(s => ({
+          title: (s.title ?? '').trim(),
+          detail: (s.detail ?? '').trim(),
+          deliverable: (s.deliverable ?? '').trim(),
+        }))
+        .slice(0, 7)
+    : []
+  if (steps.length === 0) throw new Error('実行手順の生成に失敗しました')
+
+  return {
+    actionTitle: action.title,
+    goal: typeof parsed.goal === 'string' ? parsed.goal : '',
+    steps,
+    resources: Array.isArray(parsed.resources) ? parsed.resources.filter((x): x is string => typeof x === 'string').slice(0, 4) : [],
+    successCriteria: typeof parsed.successCriteria === 'string' ? parsed.successCriteria : '',
+    estimatedPeriod: typeof parsed.estimatedPeriod === 'string' ? parsed.estimatedPeriod : '',
+    risks: Array.isArray(parsed.risks) ? parsed.risks.filter((x): x is string => typeof x === 'string').slice(0, 4) : [],
+  }
 }

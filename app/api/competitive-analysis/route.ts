@@ -3,6 +3,7 @@ import {
   analyzeCompetitor,
   buildKeywordOpportunities,
   DEFAULT_COMPETITORS,
+  generateActionPlan,
   generateCompetitiveStrategy,
   getAhrefsUsage,
   loadCompetitiveAnalysis,
@@ -12,6 +13,7 @@ import {
   saveCompetitorConfig,
   type CompetitorConfig,
   type CompetitorUrl,
+  type StrategyAction,
 } from '@/lib/competitiveAnalysis'
 
 export const dynamic = 'force-dynamic'
@@ -40,6 +42,7 @@ export async function GET() {
  * - analyze-competitor: 公式ページ収集＋5軸分析
  * - refresh-keywords: Ahrefsから競合KWを取得
  * - generate-strategy: 第3段階の統合戦略提案
+ * - action-plan: 施策1件の具体的な実行手順(ToDo)をオンデマンド生成
  */
 export async function POST(request: NextRequest) {
   try {
@@ -48,6 +51,7 @@ export async function POST(request: NextRequest) {
       config?: CompetitorConfig[]
       competitorId?: string
       pages?: CompetitorUrl[]
+      strategyAction?: StrategyAction
     }
 
     if (body.action === 'save-config') {
@@ -77,6 +81,14 @@ export async function POST(request: NextRequest) {
     if (body.action === 'generate-strategy') {
       const report = await generateCompetitiveStrategy()
       return NextResponse.json({ report })
+    }
+
+    if (body.action === 'action-plan') {
+      if (!body.strategyAction?.title) {
+        return NextResponse.json({ error: 'strategyAction が必要です' }, { status: 400 })
+      }
+      const plan = await generateActionPlan(body.strategyAction)
+      return NextResponse.json({ plan })
     }
 
     return NextResponse.json({ error: '未知の action です' }, { status: 400 })

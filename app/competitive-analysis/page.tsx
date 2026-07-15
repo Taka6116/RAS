@@ -6,21 +6,28 @@ import {
   BarChart3,
   CheckCircle2,
   ChevronRight,
+  Clock,
   Crosshair,
   ExternalLink,
   History,
   Lightbulb,
+  ListChecks,
   Loader2,
   RefreshCw,
   Search,
+  ShieldAlert,
   Target,
   Users,
+  Wrench,
+  X,
 } from 'lucide-react'
 import type {
+  ActionPlan,
   CompetitiveAnalysisDocument,
   CompetitiveAnalysisSnapshot,
   CompetitorConfig,
   KeywordOpportunity,
+  StrategyAction,
   StrategyPriority,
   StrategyPhase,
 } from '@/lib/competitiveAnalysis'
@@ -134,6 +141,12 @@ export default function CompetitiveAnalysisPage() {
   const [running, setRunning] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('competitors')
+  // 施策の実行手順モーダル
+  const [planAction, setPlanAction] = useState<StrategyAction | null>(null)
+  const [planLoading, setPlanLoading] = useState(false)
+  const [planError, setPlanError] = useState<string | null>(null)
+  // 生成済みプランはタイトルをキーにキャッシュし、再クリック時の再生成を避ける
+  const [planCache, setPlanCache] = useState<Record<string, ActionPlan>>({})
   const [viewDate, setViewDate] = useState('latest')
   const [urlDrafts, setUrlDrafts] = useState<Record<string, { label: string; url: string }>>({})
 
@@ -220,6 +233,27 @@ export default function CompetitiveAnalysisPage() {
     await refresh()
     if (failures.length > 0) setError(failures.join(' / '))
     setRunning(null)
+  }
+
+  const openActionPlan = async (action: StrategyAction) => {
+    setPlanAction(action)
+    setPlanError(null)
+    if (planCache[action.title]) return // キャッシュ済みなら生成しない
+    setPlanLoading(true)
+    try {
+      const response = await fetch('/api/competitive-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'action-plan', strategyAction: action }),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error ?? '実行手順の生成に失敗しました')
+      setPlanCache(prev => ({ ...prev, [action.title]: body.plan as ActionPlan }))
+    } catch (e) {
+      setPlanError(e instanceof Error ? e.message : '実行手順の生成に失敗しました')
+    } finally {
+      setPlanLoading(false)
+    }
   }
 
   const addMonitoringUrl = async (competitor: CompetitorConfig) => {
@@ -727,12 +761,21 @@ export default function CompetitiveAnalysisPage() {
                       <div className="rounded-t-[10px] px-3 py-2 text-white text-[12px] font-black" style={{ background: meta.gradient }}>{meta.label}（{actions.length}件）</div>
                       <div className="rounded-b-[10px] p-2.5 space-y-2 min-h-[100px]" style={{ background: 'rgba(0,154,224,0.03)', border: '1px solid #D0E3F0', borderTop: 'none' }}>
                         {actions.length === 0 ? <p className="text-center text-[11px] pt-5" style={{ color: '#94A3B8' }}>なし</p> : actions.map((action, index) => (
-                          <div key={index} className="rounded-[10px] p-3" style={{ background: 'white', border: '1px solid #D0E3F0' }}>
+                          <button
+                            key={index}
+                            type="button"
+                            onClick={() => void openActionPlan(action)}
+                            className="w-full text-left rounded-[10px] p-3 transition-all hover:shadow-md hover:-translate-y-px"
+                            style={{ background: 'white', border: '1px solid #D0E3F0' }}
+                          >
                             <div className="flex gap-1.5 items-center mb-1 flex-wrap"><Target size={12} style={{ color: '#009AE0' }} /><strong className="text-[12px]">{action.title}</strong><span className="px-1.5 py-0 rounded-full text-[10px]" style={{ color: PHASES[action.phase].color, background: `${PHASES[action.phase].color}18` }}>{PHASES[action.phase].label}</span></div>
                             <p className="text-[11px] leading-relaxed" style={{ color: '#64748B' }}>{action.description}</p>
                             <p className="mt-2 text-[10px]"><strong>対象:</strong> {action.target}</p>
                             <p className="text-[10px]"><strong>KPI:</strong> {action.kpi}</p>
-                          </div>
+                            <div className="mt-2 flex items-center gap-1 text-[10px] font-bold" style={{ color: '#0080C0' }}>
+                              <ListChecks size={11} />実行手順を見る<ChevronRight size={11} />
+                            </div>
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -745,6 +788,161 @@ export default function CompetitiveAnalysisPage() {
           )}
         </div>
       )}
+
+      {planAction && (
+        <ActionPlanModal
+          action={planAction}
+          plan={planCache[planAction.title] ?? null}
+          loading={planLoading}
+          error={planError}
+          onClose={() => setPlanAction(null)}
+          onRetry={() => void openActionPlan(planAction)}
+        />
+      )}
+    </div>
+  )
+}
+
+function ActionPlanModal({
+  action,
+  plan,
+  loading,
+  error,
+  onClose,
+  onRetry,
+}: {
+  action: StrategyAction
+  plan: ActionPlan | null
+  loading: boolean
+  error: string | null
+  onClose: () => void
+  onRetry: () => void
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(10,30,60,0.45)' }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl max-h-[88vh] overflow-hidden rounded-[18px] flex flex-col"
+        style={{ background: '#FFFFFF', boxShadow: '0 24px 60px rgba(10,30,80,0.35)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* ヘッダー */}
+        <div className="px-6 py-4 flex items-start justify-between gap-3" style={{ background: 'linear-gradient(135deg, #0A2540, #0080C0)' }}>
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold" style={{ background: 'rgba(255,255,255,0.2)', color: 'white' }}>{PHASES[action.phase].label}</span>
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold" style={{ background: 'rgba(255,255,255,0.2)', color: 'white' }}>{action.category}</span>
+            </div>
+            <h3 className="text-white font-black text-[16px] leading-tight">{action.title}</h3>
+            <p className="text-white/80 text-[12px] mt-1 leading-relaxed">{action.description}</p>
+          </div>
+          <button type="button" onClick={onClose} className="flex-shrink-0 rounded-full p-1 transition-colors hover:bg-white/20">
+            <X size={18} className="text-white" />
+          </button>
+        </div>
+
+        {/* ボディ */}
+        <div className="px-6 py-5 overflow-y-auto">
+          {loading && (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <Loader2 size={28} className="animate-spin" style={{ color: '#009AE0' }} />
+              <p className="text-[13px] font-bold" style={{ color: '#0A2540' }}>実行手順を生成しています…</p>
+              <p className="text-[11px]" style={{ color: '#94A3B8' }}>AIがこの施策のToDoを具体化しています（10〜30秒）</p>
+            </div>
+          )}
+
+          {!loading && error && (
+            <div className="py-10 text-center">
+              <AlertTriangle size={24} className="mx-auto mb-2" style={{ color: '#e53e4f' }} />
+              <p className="text-[13px] mb-4" style={{ color: '#c02637' }}>{error}</p>
+              <button type="button" onClick={onRetry} className="px-4 py-2 rounded-[10px] text-[12px] font-bold text-white" style={{ background: '#009AE0' }}>
+                もう一度生成する
+              </button>
+            </div>
+          )}
+
+          {!loading && !error && plan && (
+            <div className="space-y-5">
+              {/* ゴール＋期間 */}
+              <div className="rounded-[12px] p-4" style={{ background: 'rgba(0,154,224,0.06)', border: '1px solid rgba(0,154,224,0.25)' }}>
+                <div className="flex items-center gap-1.5 mb-1.5"><Target size={13} style={{ color: '#0080C0' }} /><span className="text-[11px] font-black" style={{ color: '#0080C0' }}>ゴール</span></div>
+                <p className="text-[13px] leading-relaxed" style={{ color: '#1A1A2E' }}>{plan.goal}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {plan.estimatedPeriod && (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold" style={{ background: 'white', color: '#0A2540', border: '1px solid #D0E3F0' }}>
+                      <Clock size={11} style={{ color: '#0080C0' }} />目安期間: {plan.estimatedPeriod}
+                    </span>
+                  )}
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold" style={{ background: 'white', color: '#0A2540', border: '1px solid #D0E3F0' }}>
+                    <Crosshair size={11} style={{ color: '#0080C0' }} />対象: {action.target}
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold" style={{ background: 'white', color: '#0A2540', border: '1px solid #D0E3F0' }}>
+                    <BarChart3 size={11} style={{ color: '#0080C0' }} />KPI: {action.kpi}
+                  </span>
+                </div>
+              </div>
+
+              {/* 手順 */}
+              <div>
+                <div className="flex items-center gap-1.5 mb-3"><ListChecks size={15} style={{ color: '#009AE0' }} /><h4 className="font-black text-[13px]" style={{ color: '#1A1A2E' }}>実行手順</h4></div>
+                <ol className="space-y-3">
+                  {plan.steps.map((step, i) => (
+                    <li key={i} className="flex gap-3">
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-black text-white" style={{ background: 'linear-gradient(135deg, #009AE0, #0A2540)' }}>{i + 1}</div>
+                      <div className="flex-1 pb-1">
+                        <p className="text-[13px] font-bold" style={{ color: '#1A1A2E' }}>{step.title}</p>
+                        {step.detail && <p className="text-[12px] leading-relaxed mt-0.5" style={{ color: '#475569' }}>{step.detail}</p>}
+                        {step.deliverable && (
+                          <p className="text-[11px] mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded" style={{ background: 'rgba(0,154,224,0.08)', color: '#0080C0' }}>
+                            成果物: {step.deliverable}
+                          </p>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+
+              {/* 完了基準 */}
+              {plan.successCriteria && (
+                <div className="rounded-[12px] p-4" style={{ background: '#FAFCFE', border: '1px solid #D0E3F0' }}>
+                  <div className="flex items-center gap-1.5 mb-1.5"><CheckCircle2 size={13} style={{ color: '#16a34a' }} /><span className="text-[11px] font-black" style={{ color: '#16a34a' }}>完了の判断基準</span></div>
+                  <p className="text-[12px] leading-relaxed" style={{ color: '#334155' }}>{plan.successCriteria}</p>
+                </div>
+              )}
+
+              {/* リソース・注意 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {plan.resources.length > 0 && (
+                  <div className="rounded-[12px] p-4" style={{ background: '#FAFCFE', border: '1px solid #D0E3F0' }}>
+                    <div className="flex items-center gap-1.5 mb-2"><Wrench size={13} style={{ color: '#0080C0' }} /><span className="text-[11px] font-black" style={{ color: '#0A2540' }}>必要なリソース</span></div>
+                    <ul className="space-y-1">
+                      {plan.resources.map((r, i) => <li key={i} className="text-[12px] leading-relaxed flex gap-1.5" style={{ color: '#334155' }}><span style={{ color: '#009AE0' }}>・</span>{r}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {plan.risks.length > 0 && (
+                  <div className="rounded-[12px] p-4" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.28)' }}>
+                    <div className="flex items-center gap-1.5 mb-2"><ShieldAlert size={13} style={{ color: '#d97706' }} /><span className="text-[11px] font-black" style={{ color: '#b45309' }}>つまずきやすい点</span></div>
+                    <ul className="space-y-1">
+                      {plan.risks.map((r, i) => <li key={i} className="text-[12px] leading-relaxed flex gap-1.5" style={{ color: '#334155' }}><span style={{ color: '#d97706' }}>・</span>{r}</li>)}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
