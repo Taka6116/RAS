@@ -7,6 +7,8 @@ export const maxDuration = 120
 
 const PREFIX = 'kw-analysis/'
 const INDEX_KEY = `${PREFIX}index.json`
+/** 成果測定用の順位履歴スナップショット（日付ごとに蓄積、削除しない） */
+const HISTORY_PREFIX = `${PREFIX}history/`
 const DEFAULT_MAX_ROWS = 25
 const KEYWORD_REFRESH_LIMIT = 100
 
@@ -208,6 +210,28 @@ export async function POST(request: NextRequest) {
     }
 
     await saveIndex(index)
+
+    // 成果測定用: 自社流入KWの順位スナップショットを日付キーで蓄積する。
+    // データセット本体はAPI更新のたびに置き換えられるが、履歴は残し続けて
+    // 「公開日からの経過日数 × 順位変化」を追跡できるようにする。
+    if (organicRows.length > 0) {
+      const snapshot = {
+        date,
+        fetchedAt: now,
+        domain,
+        country,
+        keywords: organicRows.map(row => ({
+          keyword: row.keyword,
+          position: row.position,
+          volume: row.volume,
+          traffic: row.currentTraffic,
+          url: row.url,
+        })),
+      }
+      // 同日に複数回更新した場合は最新で上書き（1日1スナップショット）
+      await putS3Object(`${HISTORY_PREFIX}${date}.json`, JSON.stringify(snapshot))
+    }
+
     results.usage = await fetchApiUsage()
 
     return NextResponse.json({

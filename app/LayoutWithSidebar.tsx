@@ -50,6 +50,7 @@ export default function LayoutWithSidebar({
         {/* ナビゲーション */}
         <nav className="scrollbar-none flex-1 px-3 py-4 text-sm space-y-1 overflow-y-auto">
           {[
+            { href: '/home',      label: 'ホーム' },
             { href: '/editor',    label: '記事を作成' },
             { href: '/articles',  label: '保存済み記事一覧' },
             { href: '/published', label: '過去投稿済み記事一覧' },
@@ -61,7 +62,7 @@ export default function LayoutWithSidebar({
             { href: '/article-analytics',    label: '記事分析' },
             { href: '/competitive-analysis', label: '競合分析' },
             { href: '/personas',  label: '仮説ペルソナ' },
-            { href: '/settings',  label: 'サイト設定' },
+            { href: '/performance', label: '成果測定' },
             { href: '/notice',    label: '注意書き' },
           ].map(({ href, label }) => {
             const isActive = pathname === href || pathname.startsWith(href + '/')
