@@ -176,22 +176,24 @@ export default function CompetitiveAnalysisPage() {
   const analyzeAll = async () => {
     setRunning('analyze-all')
     setError(null)
-    try {
-      for (const competitor of config) {
+    // 1社が失敗しても他社の分析は続行し、失敗はまとめて表示する
+    const failures: string[] = []
+    for (const competitor of config) {
+      try {
         const response = await fetch('/api/competitive-analysis', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'analyze-competitor', competitorId: competitor.id }),
         })
         const body = await response.json().catch(() => ({}))
-        if (!response.ok) throw new Error(`${competitor.name}: ${body.error ?? '分析に失敗しました'}`)
+        if (!response.ok) failures.push(`${competitor.name}: ${body.error ?? '分析に失敗しました'}`)
+      } catch {
+        failures.push(`${competitor.name}: 通信に失敗しました`)
       }
-      await refresh()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '競合分析に失敗しました')
-    } finally {
-      setRunning(null)
     }
+    await refresh()
+    if (failures.length > 0) setError(failures.join(' / '))
+    setRunning(null)
   }
 
   const addMonitoringUrl = async (competitor: CompetitorConfig) => {

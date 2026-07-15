@@ -194,10 +194,12 @@ export const DEFAULT_COMPETITORS: CompetitorConfig[] = [
   {
     id: 'superstream',
     name: 'SuperStream',
-    domain: 'superstream.canon-its.co.jp',
+    // superstream.canon-its.co.jp は現存せず（ENOTFOUND）。
+    // 製品ページは canon-its.co.jp 配下の /products/superstream/ にある。
+    domain: 'canon-its.co.jp',
     type: 'indirect',
     note: '会計・人事給与に強い国産パッケージ。会計領域KWで競合。',
-    urls: [{ url: 'https://superstream.canon-its.co.jp/', label: 'トップページ' }],
+    urls: [{ url: 'https://www.canon-its.co.jp/products/superstream/', label: 'SuperStream 製品ページ' }],
   },
 ]
 
@@ -299,11 +301,20 @@ ${raw.slice(0, 24_000)}`,
  * 法人向けサブドメイン(biz.moneyforward.com)へ寄せ、B2CノイズKWを避ける。
  */
 function migrateCompetitorConfig(config: CompetitorConfig[]): CompetitorConfig[] {
-  return config.map(c =>
-    c.id === 'moneyforward' && c.domain === 'moneyforward.com'
-      ? { ...c, domain: 'biz.moneyforward.com' }
-      : c,
-  )
+  return config.map(c => {
+    if (c.id === 'moneyforward' && c.domain === 'moneyforward.com') {
+      return { ...c, domain: 'biz.moneyforward.com' }
+    }
+    // 旧SuperStream設定（存在しないドメイン）を現行の製品ページへ寄せる
+    if (c.id === 'superstream' && c.domain === 'superstream.canon-its.co.jp') {
+      return {
+        ...c,
+        domain: 'canon-its.co.jp',
+        urls: [{ url: 'https://www.canon-its.co.jp/products/superstream/', label: 'SuperStream 製品ページ' }],
+      }
+    }
+    return c
+  })
 }
 
 export async function loadCompetitorConfig(): Promise<CompetitorConfig[]> {
@@ -374,14 +385,28 @@ export async function fetchCompetitorPage(
   if (!isAllowedCompetitorUrl(page.url, competitor)) {
     throw new Error(`競合ドメイン（${competitor.domain}）配下のHTTPS URLのみ取得できます`)
   }
-  const response = await fetch(page.url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (compatible; RAS-CompetitiveAnalysis/1.0)',
-      Accept: 'text/html,application/xhtml+xml',
-    },
-    redirect: 'follow',
-    cache: 'no-store',
-  })
+  let response: Response
+  try {
+    response = await fetch(page.url, {
+      headers: {
+        // 一部サイトはbot風UAを弾くため一般的なブラウザUAを使用する
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml',
+      },
+      redirect: 'follow',
+      cache: 'no-store',
+    })
+  } catch (e) {
+    // fetch自体の失敗（DNS/接続/TLS）は原因コードを添えて分かりやすくする
+    const cause = (e as { cause?: { code?: string } })?.cause?.code
+    const reason = cause === 'ENOTFOUND'
+      ? 'ドメインが見つかりません（URLが変わった可能性）'
+      : cause === 'UND_ERR_CONNECT_TIMEOUT'
+        ? '接続タイムアウト'
+        : (e instanceof Error ? e.message : '不明なエラー')
+    throw new Error(`${page.url} の取得に失敗: ${reason}`)
+  }
   const html = await response.text()
   const body = html
     .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
@@ -454,7 +479,17 @@ export async function analyzeCompetitor(
   const competitor = config.find(c => c.id === competitorId)
   if (!competitor) throw new Error('指定された競合が見つかりません')
   const targets = pages?.length ? pages : competitor.urls
-  const sourcePages = await Promise.all(targets.map(page => fetchCompetitorPage(competitor, page)))
+  // 一部のページ取得が失敗しても、成功したページだけで分析を継続する
+  const settled = await Promise.allSettled(targets.map(page => fetchCompetitorPage(competitor, page)))
+  const sourcePages = settled
+    .filter((r): r is PromiseFulfilledResult<CompetitorPageSource> => r.status === 'fulfilled')
+    .map(r => r.value)
+  if (sourcePages.length === 0) {
+    const reasons = settled
+      .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+      .map(r => (r.reason instanceof Error ? r.reason.message : String(r.reason)))
+    throw new Error(reasons[0] ?? '競合ページを取得できませんでした')
+  }
   const axes = await analyzeFiveAxes(competitor, sourcePages)
   const doc = await loadCompetitiveAnalysis()
   const current = doc.competitors[competitor.id]
@@ -533,12 +568,17 @@ export async function buildKeywordOpportunities(doc?: CompetitiveAnalysisDocumen
   // Ahrefsを画面表示のたびに呼ばず、競合KW更新時に保存した自社データを使う。
   const self = selfKeywordMap(analysis.selfKeywords ?? [])
   const candidate = new Map<string, KeywordOpportunity>()
+  // 1社（例: freeeのB2C会計KW）がボリュームで機会一覧を独占しないよう、
+  // 競合ごとの寄与上限を設けて多様性を確保する。
+  const PER_COMPETITOR_LIMIT = 15
   for (const [id, result] of Object.entries(analysis.competitors)) {
     const competitor = config.find(c => c.id === id)
     if (!competitor) continue
-    for (const row of result.keywords ?? []) {
-      if (row.position !== null && row.position > 30) continue
-      if (row.volume < 20) continue
+    const rows = (result.keywords ?? [])
+      .filter(row => (row.position === null || row.position <= 30) && row.volume >= 20)
+      .sort((a, b) => b.volume - a.volume)
+      .slice(0, PER_COMPETITOR_LIMIT)
+    for (const row of rows) {
       const key = normalizedKeyword(row.keyword)
       const own = self.get(key)
       const opportunity = !own ? 'gap' : (own.position ?? 100) > 20 ? 'weak' : 'defend'
