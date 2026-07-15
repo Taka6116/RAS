@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server'
-import { listS3Objects, getS3ObjectsAsTextBatch, getS3ObjectAsText } from '@/lib/s3Reference'
+import { listS3Objects, getS3ObjectsAsTextBatch, getS3ObjectAsText, putS3Object } from '@/lib/s3Reference'
 import type { SavedArticle } from '@/lib/types'
 import type { AhrefsDataset } from '@/lib/ahrefsCsvParser'
+import { fetchWordPressPostStatusBySlug } from '@/lib/wordpress'
 
 export const dynamic = 'force-dynamic'
+/** WordPress側の公開状態を最大30件・5並列で問い合わせるため、既定の10秒制限を延長 */
+export const maxDuration = 60
 
 const ARTICLES_PREFIX = 'articles/'
 const KW_PREFIX = 'kw-analysis/'
@@ -79,6 +82,61 @@ function daysBetween(fromDate: string, toDate: string): number {
   const from = new Date(`${fromDate}T00:00:00Z`).getTime()
   const to = new Date(`${toDate}T00:00:00Z`).getTime()
   return Math.round((to - from) / 86_400_000)
+}
+
+function articleKey(id: string): string {
+  return `articles/${id}.json`
+}
+
+/** article.slug が空でも wordpressUrl のパス末尾から同じスラッグを復元する */
+function resolveSlugForSync(article: SavedArticle): string {
+  if (article.slug?.trim()) return article.slug.trim()
+  if (!article.wordpressUrl) return ''
+  try {
+    const path = new URL(article.wordpressUrl).pathname
+    return path.split('/').filter(Boolean).pop() ?? ''
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * WordPressへ下書き送信済み（RAS側ではまだ「公開」扱いでない）記事について、
+ * WordPress管理画面から直接「公開」に変更されていないかを問い合わせて同期する。
+ * 公開が確認できた記事はRAS側のS3データも更新し、以後は毎回の問い合わせを避ける。
+ */
+async function syncPublishStatusFromWordPress(articles: SavedArticle[]): Promise<SavedArticle[]> {
+  const candidates = articles
+    .filter(a => a.wordpressUrl && a.status !== 'published' && resolveSlugForSync(a))
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+    .slice(0, 30) // WordPressへの問い合わせ件数の上限（レスポンス速度を保つため）
+
+  if (candidates.length === 0) return articles
+
+  const updatedById = new Map<string, SavedArticle>()
+  const concurrency = 5
+  for (let i = 0; i < candidates.length; i += concurrency) {
+    const batch = candidates.slice(i, i + concurrency)
+    await Promise.all(
+      batch.map(async article => {
+        const result = await fetchWordPressPostStatusBySlug(resolveSlugForSync(article))
+        if (!result || (result.status !== 'publish' && result.status !== 'future')) return
+
+        const merged: SavedArticle = {
+          ...article,
+          status: 'published',
+          wordpressPostStatus: result.status,
+          wordpressUrl: result.link || article.wordpressUrl,
+        }
+        updatedById.set(article.id, merged)
+        // 検知結果をS3へ書き戻し、次回以降はWordPressへ問い合わせずに済むようにする
+        await putS3Object(articleKey(article.id), JSON.stringify(merged)).catch(() => {})
+      })
+    )
+  }
+
+  if (updatedById.size === 0) return articles
+  return articles.map(a => updatedById.get(a.id) ?? a)
 }
 
 async function loadSnapshots(): Promise<HistorySnapshot[]> {
@@ -159,12 +217,15 @@ export async function GET() {
       snapshots.sort((a, b) => a.date.localeCompare(b.date))
     }
 
-    const articles: SavedArticle[] = []
+    let articles: SavedArticle[] = []
     for (const object of articleObjects) {
       try {
         articles.push(JSON.parse(object.content) as SavedArticle)
       } catch { /* skip malformed */ }
     }
+
+    // WordPress管理画面から直接「下書き→公開」に変更された記事を検知して同期する
+    articles = await syncPublishStatusFromWordPress(articles)
 
     // スナップショットごとにKW→行のマップを事前構築
     const snapshotMaps = snapshots.map(snapshot => {

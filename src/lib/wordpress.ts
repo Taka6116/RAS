@@ -1109,6 +1109,45 @@ async function diagnoseWordPressAccess(
   return { summary, likelyCause }
 }
 
+export interface WordPressPostStatusResult {
+  status: string;
+  link: string;
+}
+
+/**
+ * スラッグからWordPress側の現在の投稿ステータスを取得する。
+ * 「RASでは下書き送信のみだが、WordPress管理画面で直接公開に変更した」ケースを
+ * 検知するために使用する（成果測定ページの同期処理）。
+ * status=draft,pending,private も含めて問い合わせるため認証必須。
+ */
+export async function fetchWordPressPostStatusBySlug(slug: string): Promise<WordPressPostStatusResult | null> {
+  const trimmedSlug = slug.trim();
+  if (!trimmedSlug) return null;
+
+  const wpUrl = process.env.WORDPRESS_URL?.trim();
+  const username = process.env.WORDPRESS_USERNAME?.trim();
+  const appPassword = process.env.WORDPRESS_APP_PASSWORD?.trim();
+  if (!wpUrl || !username || !appPassword) return null;
+
+  const postType = process.env.WORDPRESS_POST_TYPE?.trim() || 'column';
+  const credentials = Buffer.from(`${username}:${appPassword}`).toString('base64');
+  const url = `${wpUrl}/wp-json/wp/v2/${postType}?slug=${encodeURIComponent(trimmedSlug)}&status=publish,future,draft,pending,private&context=edit&per_page=1`;
+
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Basic ${credentials}` },
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const data = (await res.json().catch(() => null)) as Array<{ status?: string; link?: string }> | null;
+    const post = data?.[0];
+    if (!post?.status) return null;
+    return { status: post.status, link: post.link ?? '' };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * WordPress REST APIに投稿する
  */
