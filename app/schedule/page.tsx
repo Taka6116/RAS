@@ -1017,45 +1017,59 @@ function AutoDraftPanel() {
         </div>
       )}
 
-      {/* ステータスカード */}
-      <div className="rounded-xl p-5 flex flex-wrap items-center justify-between gap-4" style={{ background: 'white', border: '1px solid #D0E3F0' }}>
-        <div className="flex items-center gap-4">
-          <button
-            type="button"
-            onClick={() => void saveConfig({ enabled: !config.enabled })}
-            disabled={saving}
-            className="relative w-14 h-7 rounded-full transition-colors flex-shrink-0"
-            style={{ background: config.enabled ? '#009AE0' : '#CBD5E1' }}
-            aria-label={config.enabled ? '自動下書き投稿を停止' : '自動下書き投稿を再開'}
-          >
+      {/* ステータスカード: 「自動化実行」で開始すると、以後は選択した曜日・時刻で
+          止めるまで自動で下書き投稿され続ける。都度クリックする運用ではない。 */}
+      <div className="rounded-xl p-5" style={{ background: 'white', border: '1px solid #D0E3F0' }}>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
             <span
-              className="absolute top-0.5 w-6 h-6 rounded-full bg-white transition-all"
-              style={{ left: config.enabled ? 'calc(100% - 26px)' : '2px', boxShadow: '0 1px 3px rgba(0,0,0,0.25)' }}
-            />
-          </button>
-          <div>
-            <p className="text-sm font-bold" style={{ color: config.enabled ? '#0A2540' : '#94A3B8' }}>
-              自動下書き投稿は{config.enabled ? '有効' : '停止中'}です
-            </p>
-            <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>
-              AIがAhrefs・競合分析・既存記事のデータからターゲットKWを自動選定し、記事を生成してWordPressに下書き投稿します。アイキャッチは画像ページのインポート画像からランダムに設定されます（直近5回に使った画像は除外）
-            </p>
+              className="relative flex h-3 w-3 flex-shrink-0"
+              style={{ display: config.enabled ? 'flex' : 'none' }}
+            >
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-60" style={{ background: '#009AE0' }} />
+              <span className="relative inline-flex rounded-full h-3 w-3" style={{ background: '#009AE0' }} />
+            </span>
+            {!config.enabled && <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: '#CBD5E1' }} />}
+            <div>
+              <p className="text-sm font-bold" style={{ color: config.enabled ? '#0A2540' : '#94A3B8' }}>
+                {config.enabled ? '自動化 実行中：止めるまで自動で投稿され続けます' : '自動化は停止中です'}
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>
+                AIがAhrefs・競合KW・既存記事・各種数値を分析し、最も流入増加が見込めるKWを自動選定して記事を生成、WordPressに下書き投稿します。アイキャッチは画像ページのインポート画像からランダム設定（直近5回使用分は除外）
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <div className="text-right">
+              <p className="text-[11px]" style={{ color: '#94A3B8' }}>次回自動実行予定（日本時間）</p>
+              <p className="text-sm font-bold" style={{ color: '#0A2540' }}>{nextRun}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void saveConfig({ enabled: !config.enabled })}
+              disabled={saving}
+              className="px-5 py-2.5 rounded-lg text-sm font-bold text-white flex items-center gap-2 disabled:opacity-60"
+              style={{ background: config.enabled ? '#DC2626' : 'linear-gradient(135deg, #009AE0, #0A2540)' }}
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : (config.enabled ? <Pencil size={14} /> : <Send size={14} />)}
+              {config.enabled ? '停止する' : '自動化実行'}
+            </button>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="text-right">
-            <p className="text-[11px]" style={{ color: '#94A3B8' }}>次回実行予定（日本時間）</p>
-            <p className="text-sm font-bold" style={{ color: '#0A2540' }}>{nextRun}</p>
-          </div>
+
+        <div className="mt-4 pt-3 flex items-center justify-between gap-3" style={{ borderTop: '1px solid #F1F5F9' }}>
+          <p className="text-[11px]" style={{ color: '#94A3B8' }}>
+            動作確認をしたい場合はこちら（スケジュールとは無関係に今すぐ1回だけ実行します。自動化のON/OFFには影響しません）
+          </p>
           <button
             type="button"
             onClick={() => void runNow()}
             disabled={running}
-            className="px-4 py-2 rounded-lg text-sm font-bold text-white flex items-center gap-2 disabled:opacity-60"
-            style={{ background: 'linear-gradient(135deg, #009AE0, #0A2540)' }}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 flex-shrink-0 disabled:opacity-60"
+            style={{ background: '#F8FAFC', border: '1px solid #D0E3F0', color: '#475569' }}
           >
-            {running ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-            {running ? '実行中…（2〜4分）' : '今すぐテスト実行'}
+            {running ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+            {running ? '実行中…（2〜4分）' : 'テスト実行（1回のみ）'}
           </button>
         </div>
       </div>

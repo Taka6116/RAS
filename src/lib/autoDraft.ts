@@ -185,7 +185,9 @@ async function loadCompetitorBrandTokens(): Promise<string[]> {
 /**
  * Ahrefs・競合分析・既存記事を統合してターゲットKWを1つ選ぶ。
  *
- * スコア = Ahrefs機会スコア + priority加点 + 競合ギャップ加点。
+ * 目的は「順位が上がり、実際の流入増加が見込めるKW」を選ぶこと。
+ * スコア = Ahrefs機会スコア(volume/KD/CPC) + priority加点 + 競合ギャップ加点
+ *        + トラフィック期待値加点 + 追い上げ圏（21〜50位）加点。
  * 除外: 既存記事のターゲットKW / 自社が既に20位以内のKW /
  *       競合ブランド名を含むKW / 過去の自動実行で使用したKW / branded判定のKW。
  */
@@ -226,22 +228,30 @@ export async function selectTargetKeyword(config: AutoDraftConfig): Promise<Sele
   // 第一候補: Ahrefs KWデータセットをスコアリング
   if (keywordRows.length > 0) {
     const scored = analyzeKeywords(keywordRows)
-    let best: { row: (typeof scored)[number]; total: number; gapBonus: number } | null = null
+    let best: { row: (typeof scored)[number]; total: number; gapBonus: number; trafficBonus: number; climbBonus: number; ownPos?: number } | null = null
     for (const row of scored) {
       if (row.branded) continue
       if (row.volume < 30) continue
       if (isExcluded(row.keyword)) continue
-      const opp = opportunityMap.get(normalizeKeyword(row.keyword))
+      const norm = normalizeKeyword(row.keyword)
+      const opp = opportunityMap.get(norm)
       const gapBonus = opp?.opportunity === 'gap' ? 15 : opp?.opportunity === 'weak' ? 8 : 0
-      const total = row.opportunityScore + row.priority * 5 + gapBonus
-      if (!best || total > best.total) best = { row, total, gapBonus }
+      // トラフィック期待値（KW Explorer由来データのみ持つ）を加点し、実流入増を重視
+      const trafficBonus = row.trafficPotential > 0 ? Math.min(row.trafficPotential / 200, 10) : 0
+      // 21〜50位は「追い上げれば1ページ目に届く」圏内として優先度を上げる
+      const ownPos = ownRanking.get(norm)
+      const climbBonus = ownPos != null && ownPos <= 50 ? 12 : 0
+      const total = row.opportunityScore + row.priority * 5 + gapBonus + trafficBonus + climbBonus
+      if (!best || total > best.total) best = { row, total, gapBonus, trafficBonus, climbBonus, ownPos }
     }
     if (best) {
-      const { row, gapBonus } = best
+      const { row, gapBonus, trafficBonus, climbBonus, ownPos } = best
       const reasonParts = [
         `月間検索${row.volume}回 / KD${row.kd} / 機会スコア${row.opportunityScore}`,
         row.priority >= 3 ? '優先度: 即攻め' : row.priority === 2 ? '優先度: 高' : '',
         gapBonus >= 15 ? '競合が上位表示中だが自社は未露出（ギャップKW）' : gapBonus >= 8 ? '自社の露出が弱いKW' : '',
+        climbBonus > 0 ? `現在${ownPos}位（追い上げれば上位表示・流入増が見込める圏内）` : '',
+        trafficBonus > 0 ? `トラフィック期待値あり（上位表示時の見込み流入が高い）` : '',
       ].filter(Boolean)
       return {
         keyword: row.keyword,
