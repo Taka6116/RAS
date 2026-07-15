@@ -826,85 +826,83 @@ function ActionPlanModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(10,30,60,0.45)' }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3"
+      style={{ background: 'rgba(10,30,60,0.5)' }}
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl max-h-[88vh] overflow-hidden rounded-[18px] flex flex-col"
-        style={{ background: '#FFFFFF', boxShadow: '0 24px 60px rgba(10,30,80,0.35)' }}
+        className="w-[96vw] h-[92vh] overflow-hidden rounded-[18px] flex flex-col"
+        style={{ background: '#F7FAFD', boxShadow: '0 24px 60px rgba(10,30,80,0.35)' }}
         onClick={e => e.stopPropagation()}
       >
         {/* ヘッダー */}
-        <div className="px-6 py-4 flex items-start justify-between gap-3" style={{ background: 'linear-gradient(135deg, #0A2540, #0080C0)' }}>
+        <div className="px-7 py-4 flex items-start justify-between gap-3 flex-shrink-0" style={{ background: 'linear-gradient(135deg, #0A2540, #0080C0)' }}>
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold" style={{ background: 'rgba(255,255,255,0.2)', color: 'white' }}>{PHASES[action.phase].label}</span>
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold" style={{ background: 'rgba(255,255,255,0.2)', color: 'white' }}>{action.category}</span>
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: 'rgba(255,255,255,0.2)', color: 'white' }}>{PHASES[action.phase].label}</span>
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: 'rgba(255,255,255,0.2)', color: 'white' }}>{action.category}</span>
             </div>
-            <h3 className="text-white font-black text-[16px] leading-tight">{action.title}</h3>
-            <p className="text-white/80 text-[12px] mt-1 leading-relaxed">{action.description}</p>
+            <h3 className="text-white font-black text-[20px] leading-tight">{action.title}</h3>
+            <p className="text-white/80 text-[13px] mt-1 leading-relaxed max-w-4xl">{action.description}</p>
           </div>
-          <button type="button" onClick={onClose} className="flex-shrink-0 rounded-full p-1 transition-colors hover:bg-white/20">
-            <X size={18} className="text-white" />
+          <button type="button" onClick={onClose} className="flex-shrink-0 rounded-full p-1.5 transition-colors hover:bg-white/20">
+            <X size={22} className="text-white" />
           </button>
         </div>
 
         {/* ボディ */}
-        <div className="px-6 py-5 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto px-7 py-6">
           {loading && (
-            <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <Loader2 size={28} className="animate-spin" style={{ color: '#009AE0' }} />
-              <p className="text-[13px] font-bold" style={{ color: '#0A2540' }}>実行手順を生成しています…</p>
-              <p className="text-[11px]" style={{ color: '#94A3B8' }}>AIがこの施策のToDoを具体化しています（10〜30秒）</p>
+            <div className="flex flex-col items-center justify-center h-full gap-3">
+              <Loader2 size={36} className="animate-spin" style={{ color: '#009AE0' }} />
+              <p className="text-[15px] font-bold" style={{ color: '#0A2540' }}>実行手順を生成しています…</p>
+              <p className="text-[12px]" style={{ color: '#94A3B8' }}>競合データ・KW機会・ペルソナを踏まえてこの施策のToDoを具体化しています（15〜40秒）</p>
             </div>
           )}
 
           {!loading && error && (
-            <div className="py-10 text-center">
-              <AlertTriangle size={24} className="mx-auto mb-2" style={{ color: '#e53e4f' }} />
-              <p className="text-[13px] mb-4" style={{ color: '#c02637' }}>{error}</p>
-              <button type="button" onClick={onRetry} className="px-4 py-2 rounded-[10px] text-[12px] font-bold text-white" style={{ background: '#009AE0' }}>
+            <div className="flex flex-col items-center justify-center h-full">
+              <AlertTriangle size={28} className="mb-2" style={{ color: '#e53e4f' }} />
+              <p className="text-[14px] mb-4" style={{ color: '#c02637' }}>{error}</p>
+              <button type="button" onClick={onRetry} className="px-5 py-2.5 rounded-[10px] text-[13px] font-bold text-white" style={{ background: '#009AE0' }}>
                 もう一度生成する
               </button>
             </div>
           )}
 
           {!loading && !error && plan && (
-            <div className="space-y-5">
-              {/* ゴール＋期間 */}
-              <div className="rounded-[12px] p-4" style={{ background: 'rgba(0,154,224,0.06)', border: '1px solid rgba(0,154,224,0.25)' }}>
-                <div className="flex items-center gap-1.5 mb-1.5"><Target size={13} style={{ color: '#0080C0' }} /><span className="text-[11px] font-black" style={{ color: '#0080C0' }}>ゴール</span></div>
-                <p className="text-[13px] leading-relaxed" style={{ color: '#1A1A2E' }}>{plan.goal}</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {plan.estimatedPeriod && (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold" style={{ background: 'white', color: '#0A2540', border: '1px solid #D0E3F0' }}>
-                      <Clock size={11} style={{ color: '#0080C0' }} />目安期間: {plan.estimatedPeriod}
-                    </span>
-                  )}
-                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold" style={{ background: 'white', color: '#0A2540', border: '1px solid #D0E3F0' }}>
-                    <Crosshair size={11} style={{ color: '#0080C0' }} />対象: {action.target}
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold" style={{ background: 'white', color: '#0A2540', border: '1px solid #D0E3F0' }}>
-                    <BarChart3 size={11} style={{ color: '#0080C0' }} />KPI: {action.kpi}
-                  </span>
-                </div>
-              </div>
-
-              {/* 手順 */}
-              <div>
-                <div className="flex items-center gap-1.5 mb-3"><ListChecks size={15} style={{ color: '#009AE0' }} /><h4 className="font-black text-[13px]" style={{ color: '#1A1A2E' }}>実行手順</h4></div>
-                <ol className="space-y-3">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-[1600px] mx-auto">
+              {/* 左2/3: 実行手順 */}
+              <div className="lg:col-span-2">
+                <div className="flex items-center gap-2 mb-4"><ListChecks size={18} style={{ color: '#009AE0' }} /><h4 className="font-black text-[16px]" style={{ color: '#1A1A2E' }}>実行手順</h4><span className="text-[12px]" style={{ color: '#94A3B8' }}>上から順に実行すれば完了します</span></div>
+                <ol className="space-y-4">
                   {plan.steps.map((step, i) => (
-                    <li key={i} className="flex gap-3">
-                      <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-black text-white" style={{ background: 'linear-gradient(135deg, #009AE0, #0A2540)' }}>{i + 1}</div>
-                      <div className="flex-1 pb-1">
-                        <p className="text-[13px] font-bold" style={{ color: '#1A1A2E' }}>{step.title}</p>
-                        {step.detail && <p className="text-[12px] leading-relaxed mt-0.5" style={{ color: '#475569' }}>{step.detail}</p>}
+                    <li key={i} className="rounded-[14px] p-5" style={{ background: 'white', border: '1px solid #D0E3F0' }}>
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-[14px] font-black text-white" style={{ background: 'linear-gradient(135deg, #009AE0, #0A2540)' }}>{i + 1}</div>
+                        <p className="text-[15px] font-black flex-1" style={{ color: '#1A1A2E' }}>{step.title}</p>
+                        {step.effort && (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold flex-shrink-0" style={{ background: 'rgba(20,44,92,0.06)', color: '#475569' }}>
+                            <Clock size={11} />{step.effort}
+                          </span>
+                        )}
+                      </div>
+                      {step.purpose && (
+                        <p className="text-[12px] leading-relaxed mb-2 pl-11" style={{ color: '#94A3B8' }}>
+                          <span className="font-bold" style={{ color: '#64748B' }}>目的: </span>{step.purpose}
+                        </p>
+                      )}
+                      {step.detail && <p className="text-[13.5px] leading-[1.9] pl-11" style={{ color: '#334155' }}>{step.detail}</p>}
+                      <div className="flex flex-wrap gap-2 mt-3 pl-11">
                         {step.deliverable && (
-                          <p className="text-[11px] mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded" style={{ background: 'rgba(0,154,224,0.08)', color: '#0080C0' }}>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[8px] text-[12px] font-bold" style={{ background: 'rgba(0,154,224,0.08)', color: '#0080C0' }}>
                             成果物: {step.deliverable}
-                          </p>
+                          </span>
+                        )}
+                        {step.done && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[8px] text-[12px] font-bold" style={{ background: 'rgba(22,163,74,0.08)', color: '#15803d' }}>
+                            <CheckCircle2 size={12} />完了条件: {step.done}
+                          </span>
                         )}
                       </div>
                     </li>
@@ -912,29 +910,47 @@ function ActionPlanModal({
                 </ol>
               </div>
 
-              {/* 完了基準 */}
-              {plan.successCriteria && (
-                <div className="rounded-[12px] p-4" style={{ background: '#FAFCFE', border: '1px solid #D0E3F0' }}>
-                  <div className="flex items-center gap-1.5 mb-1.5"><CheckCircle2 size={13} style={{ color: '#16a34a' }} /><span className="text-[11px] font-black" style={{ color: '#16a34a' }}>完了の判断基準</span></div>
-                  <p className="text-[12px] leading-relaxed" style={{ color: '#334155' }}>{plan.successCriteria}</p>
+              {/* 右1/3: ゴール・完了基準・リソース・注意 */}
+              <div className="space-y-4 lg:sticky lg:top-0 self-start">
+                <div className="rounded-[14px] p-5" style={{ background: 'rgba(0,154,224,0.06)', border: '1px solid rgba(0,154,224,0.25)' }}>
+                  <div className="flex items-center gap-1.5 mb-2"><Target size={15} style={{ color: '#0080C0' }} /><span className="text-[13px] font-black" style={{ color: '#0080C0' }}>ゴール</span></div>
+                  <p className="text-[13.5px] leading-relaxed" style={{ color: '#1A1A2E' }}>{plan.goal}</p>
+                  <div className="mt-3 flex flex-col gap-1.5">
+                    {plan.estimatedPeriod && (
+                      <span className="inline-flex items-center gap-1.5 text-[12px] font-bold" style={{ color: '#0A2540' }}>
+                        <Clock size={13} style={{ color: '#0080C0' }} />目安期間: {plan.estimatedPeriod}
+                      </span>
+                    )}
+                    <span className="inline-flex items-start gap-1.5 text-[12px] font-bold" style={{ color: '#0A2540' }}>
+                      <Crosshair size={13} className="mt-0.5 flex-shrink-0" style={{ color: '#0080C0' }} />対象: {action.target}
+                    </span>
+                    <span className="inline-flex items-start gap-1.5 text-[12px] font-bold" style={{ color: '#0A2540' }}>
+                      <BarChart3 size={13} className="mt-0.5 flex-shrink-0" style={{ color: '#0080C0' }} />KPI: {action.kpi}
+                    </span>
+                  </div>
                 </div>
-              )}
 
-              {/* リソース・注意 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {plan.successCriteria && (
+                  <div className="rounded-[14px] p-5" style={{ background: 'white', border: '1px solid #D0E3F0' }}>
+                    <div className="flex items-center gap-1.5 mb-2"><CheckCircle2 size={15} style={{ color: '#16a34a' }} /><span className="text-[13px] font-black" style={{ color: '#16a34a' }}>施策全体の完了基準</span></div>
+                    <p className="text-[13px] leading-relaxed" style={{ color: '#334155' }}>{plan.successCriteria}</p>
+                  </div>
+                )}
+
                 {plan.resources.length > 0 && (
-                  <div className="rounded-[12px] p-4" style={{ background: '#FAFCFE', border: '1px solid #D0E3F0' }}>
-                    <div className="flex items-center gap-1.5 mb-2"><Wrench size={13} style={{ color: '#0080C0' }} /><span className="text-[11px] font-black" style={{ color: '#0A2540' }}>必要なリソース</span></div>
-                    <ul className="space-y-1">
-                      {plan.resources.map((r, i) => <li key={i} className="text-[12px] leading-relaxed flex gap-1.5" style={{ color: '#334155' }}><span style={{ color: '#009AE0' }}>・</span>{r}</li>)}
+                  <div className="rounded-[14px] p-5" style={{ background: 'white', border: '1px solid #D0E3F0' }}>
+                    <div className="flex items-center gap-1.5 mb-2.5"><Wrench size={15} style={{ color: '#0080C0' }} /><span className="text-[13px] font-black" style={{ color: '#0A2540' }}>必要なリソース</span></div>
+                    <ul className="space-y-1.5">
+                      {plan.resources.map((r, i) => <li key={i} className="text-[13px] leading-relaxed flex gap-1.5" style={{ color: '#334155' }}><span style={{ color: '#009AE0' }}>・</span>{r}</li>)}
                     </ul>
                   </div>
                 )}
+
                 {plan.risks.length > 0 && (
-                  <div className="rounded-[12px] p-4" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.28)' }}>
-                    <div className="flex items-center gap-1.5 mb-2"><ShieldAlert size={13} style={{ color: '#d97706' }} /><span className="text-[11px] font-black" style={{ color: '#b45309' }}>つまずきやすい点</span></div>
-                    <ul className="space-y-1">
-                      {plan.risks.map((r, i) => <li key={i} className="text-[12px] leading-relaxed flex gap-1.5" style={{ color: '#334155' }}><span style={{ color: '#d97706' }}>・</span>{r}</li>)}
+                  <div className="rounded-[14px] p-5" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.28)' }}>
+                    <div className="flex items-center gap-1.5 mb-2.5"><ShieldAlert size={15} style={{ color: '#d97706' }} /><span className="text-[13px] font-black" style={{ color: '#b45309' }}>つまずきやすい点と回避策</span></div>
+                    <ul className="space-y-1.5">
+                      {plan.risks.map((r, i) => <li key={i} className="text-[13px] leading-relaxed flex gap-1.5" style={{ color: '#334155' }}><span style={{ color: '#d97706' }}>・</span>{r}</li>)}
                     </ul>
                   </div>
                 )}

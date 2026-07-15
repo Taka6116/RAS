@@ -1,7 +1,8 @@
 'use client'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArticleSummary, SavedArticle } from '@/lib/types'
+import type { AutoDraftConfig, AutoDraftRun } from '@/lib/autoDraft'
 import { resolveCanonicalPostSlug } from '@/lib/slugNormalize'
 import { getArticleSummaries, getArticleById, patchArticle } from '@/lib/articleStorage'
 import {
@@ -96,6 +97,7 @@ export default function SchedulePage() {
   const [publishResult, setPublishResult] = useState<{ articleId: string; success: boolean; message: string } | null>(null)
   const [customSlugIds, setCustomSlugIds] = useState<Set<string>>(new Set())
   const [scheduleListThisMonthOnly, setScheduleListThisMonthOnly] = useState(true)
+  const [tab, setTab] = useState<'calendar' | 'auto'>('calendar')
 
   useEffect(() => {
     getArticleSummaries().then(async all => {
@@ -281,7 +283,7 @@ export default function SchedulePage() {
         </div>
       )}
 
-      <div className="mb-6">
+      <div className="mb-4">
         <h1 className="text-xl font-bold" style={{ color: '#1A1A2E' }}>
           投稿スケジュール
         </h1>
@@ -290,6 +292,27 @@ export default function SchedulePage() {
         </p>
       </div>
 
+      {/* タブ切り替え: カレンダー管理 / 自動下書き投稿 */}
+      <div className="flex gap-5 border-b mb-6" style={{ borderColor: '#D0E3F0' }}>
+        {([
+          ['calendar', 'カレンダー'],
+          ['auto', '自動下書き投稿'],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className="pb-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors"
+            style={tab === key ? { color: '#0A2540', borderColor: '#0A2540' } : { color: '#64748B', borderColor: 'transparent' }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'auto' && <AutoDraftPanel />}
+
+      {tab === 'calendar' && (
+      <>
       <div
         className="rounded-xl mb-5 overflow-hidden"
         style={{
@@ -870,6 +893,304 @@ export default function SchedulePage() {
           })()}
         </div>
       </div>
+      </>
+      )}
+    </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────
+// 自動下書き投稿タブ
+// ────────────────────────────────────────────────────────
+
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => i)
+
+/** 設定から次回実行予定（JST）のラベルを計算する */
+function computeNextRunLabel(config: AutoDraftConfig): string {
+  if (!config.enabled) return '停止中'
+  const nowJst = new Date(Date.now() + 9 * 3_600_000)
+  for (let d = 0; d < 8; d++) {
+    const cand = new Date(nowJst.getTime() + d * 86_400_000)
+    if (!config.daysOfWeek.includes(cand.getUTCDay())) continue
+    if (d === 0 && nowJst.getUTCHours() >= config.hourJst) continue
+    return `${cand.getUTCMonth() + 1}/${cand.getUTCDate()}（${WEEKDAYS[cand.getUTCDay()]}） ${config.hourJst}:00`
+  }
+  return '未定'
+}
+
+function formatRunDate(iso: string): string {
+  return new Date(iso).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function AutoDraftPanel() {
+  const [config, setConfig] = useState<AutoDraftConfig | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [running, setRunning] = useState(false)
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  // 編集用フォーム状態
+  const [days, setDays] = useState<number[]>([1, 3, 5])
+  const [hour, setHour] = useState(10)
+  const [instruction, setInstruction] = useState('')
+
+  const applyConfig = useCallback((c: AutoDraftConfig) => {
+    setConfig(c)
+    setDays(c.daysOfWeek)
+    setHour(c.hourJst)
+    setInstruction(c.extraInstruction)
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/auto-draft')
+      .then(res => res.json())
+      .then(body => { if (body.config) applyConfig(body.config as AutoDraftConfig) })
+      .catch(() => setMessage({ type: 'error', text: '設定の取得に失敗しました' }))
+      .finally(() => setLoading(false))
+  }, [applyConfig])
+
+  const saveConfig = async (partial: Partial<AutoDraftConfig>) => {
+    setSaving(true)
+    setMessage(null)
+    try {
+      const response = await fetch('/api/auto-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save-config', config: partial }),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error ?? '保存に失敗しました')
+      applyConfig(body.config as AutoDraftConfig)
+      setMessage({ type: 'success', text: '設定を保存しました' })
+    } catch (e) {
+      setMessage({ type: 'error', text: e instanceof Error ? e.message : '保存に失敗しました' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const runNow = async () => {
+    if (!window.confirm('今すぐ自動下書き投稿を1回実行します。\nKW選定→記事生成→WordPress下書き投稿まで2〜4分かかり、Gemini APIを消費します。実行しますか？')) return
+    setRunning(true)
+    setMessage(null)
+    try {
+      const response = await fetch('/api/auto-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'run-now' }),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (body.config) applyConfig(body.config as AutoDraftConfig)
+      if (!response.ok) throw new Error(body.error ?? '実行に失敗しました')
+      const run = body.run as AutoDraftRun
+      setMessage({ type: 'success', text: `「${run.keyword}」で記事を生成し、WordPressに下書き投稿しました` })
+    } catch (e) {
+      setMessage({ type: 'error', text: e instanceof Error ? e.message : '実行に失敗しました' })
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 size={24} className="animate-spin" style={{ color: '#009AE0' }} />
+      </div>
+    )
+  }
+  if (!config) {
+    return <p className="text-sm py-10 text-center" style={{ color: '#94A3B8' }}>設定を読み込めませんでした。再読み込みしてください。</p>
+  }
+
+  const nextRun = computeNextRunLabel(config)
+
+  return (
+    <div className="space-y-5">
+      {message && (
+        <div
+          className="rounded-xl px-4 py-3 text-sm"
+          style={message.type === 'success'
+            ? { background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.3)', color: '#15803d' }
+            : { background: 'rgba(229,62,79,0.08)', border: '1px solid rgba(229,62,79,0.28)', color: '#c02637' }}
+        >
+          {message.text}
+        </div>
+      )}
+
+      {/* ステータスカード */}
+      <div className="rounded-xl p-5 flex flex-wrap items-center justify-between gap-4" style={{ background: 'white', border: '1px solid #D0E3F0' }}>
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => void saveConfig({ enabled: !config.enabled })}
+            disabled={saving}
+            className="relative w-14 h-7 rounded-full transition-colors flex-shrink-0"
+            style={{ background: config.enabled ? '#009AE0' : '#CBD5E1' }}
+            aria-label={config.enabled ? '自動下書き投稿を停止' : '自動下書き投稿を再開'}
+          >
+            <span
+              className="absolute top-0.5 w-6 h-6 rounded-full bg-white transition-all"
+              style={{ left: config.enabled ? 'calc(100% - 26px)' : '2px', boxShadow: '0 1px 3px rgba(0,0,0,0.25)' }}
+            />
+          </button>
+          <div>
+            <p className="text-sm font-bold" style={{ color: config.enabled ? '#0A2540' : '#94A3B8' }}>
+              自動下書き投稿は{config.enabled ? '有効' : '停止中'}です
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>
+              AIがAhrefs・競合分析・既存記事のデータからターゲットKWを自動選定し、記事を生成してWordPressに下書き投稿します
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <p className="text-[11px]" style={{ color: '#94A3B8' }}>次回実行予定（日本時間）</p>
+            <p className="text-sm font-bold" style={{ color: '#0A2540' }}>{nextRun}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void runNow()}
+            disabled={running}
+            className="px-4 py-2 rounded-lg text-sm font-bold text-white flex items-center gap-2 disabled:opacity-60"
+            style={{ background: 'linear-gradient(135deg, #009AE0, #0A2540)' }}
+          >
+            {running ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            {running ? '実行中…（2〜4分）' : '今すぐテスト実行'}
+          </button>
+        </div>
+      </div>
+
+      {/* 設定フォーム */}
+      <div className="rounded-xl p-5" style={{ background: 'white', border: '1px solid #D0E3F0' }}>
+        <h3 className="text-sm font-bold mb-4" style={{ color: '#1A1A2E' }}>実行スケジュール設定</h3>
+        <div className="flex flex-wrap items-end gap-6 mb-4">
+          <div>
+            <p className="text-xs font-semibold mb-2" style={{ color: '#64748B' }}>実行曜日</p>
+            <div className="flex gap-1.5">
+              {WEEKDAYS.map((label, day) => {
+                const active = days.includes(day)
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => setDays(prev => active ? prev.filter(d => d !== day) : [...prev, day].sort())}
+                    className="w-9 h-9 rounded-lg text-sm font-bold transition-colors"
+                    style={active
+                      ? { background: '#0A2540', color: 'white' }
+                      : { background: '#F8FAFC', color: '#94A3B8', border: '1px solid #D0E3F0' }}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-semibold mb-2" style={{ color: '#64748B' }}>実行時刻（日本時間）</p>
+            <select
+              value={hour}
+              onChange={e => setHour(Number(e.target.value))}
+              className="px-3 py-2 rounded-lg text-sm font-semibold"
+              style={{ background: '#F8FAFC', border: '1px solid #D0E3F0', color: '#1A1A2E' }}
+            >
+              {HOUR_OPTIONS.map(h => <option key={h} value={h}>{h}:00</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="mb-4">
+          <p className="text-xs font-semibold mb-2" style={{ color: '#64748B' }}>
+            AIへの追加指示（任意・記事の方向性やトーンなど）
+          </p>
+          <textarea
+            value={instruction}
+            onChange={e => setInstruction(e.target.value)}
+            rows={3}
+            maxLength={2000}
+            placeholder="例: 中堅製造業の情シス部長向けに、導入失敗のリスク回避を切り口にしてください"
+            className="w-full px-3 py-2 rounded-lg text-sm resize-y"
+            style={{ background: '#F8FAFC', border: '1px solid #D0E3F0', color: '#1A1A2E' }}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => void saveConfig({ daysOfWeek: days, hourJst: hour, extraInstruction: instruction })}
+          disabled={saving || days.length === 0}
+          className="px-5 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-60"
+          style={{ background: '#0A2540' }}
+        >
+          {saving ? '保存中…' : '設定を保存'}
+        </button>
+        {days.length === 0 && (
+          <p className="text-xs mt-2" style={{ color: '#c02637' }}>実行曜日を1つ以上選択してください</p>
+        )}
+      </div>
+
+      {/* 実行履歴 */}
+      <div className="rounded-xl overflow-hidden" style={{ background: 'white', border: '1px solid #D0E3F0' }}>
+        <div className="px-5 py-3" style={{ borderBottom: '1px solid #F1F5F9' }}>
+          <h3 className="text-sm font-bold" style={{ color: '#1A1A2E' }}>実行履歴（直近{config.history.length}件）</h3>
+        </div>
+        {config.history.length === 0 ? (
+          <p className="text-sm text-center py-10" style={{ color: '#94A3B8' }}>
+            まだ実行履歴がありません。「今すぐテスト実行」で動作を確認できます。
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: '#F8FAFC' }}>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold whitespace-nowrap" style={{ color: '#64748B' }}>実行日時</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold whitespace-nowrap" style={{ color: '#64748B' }}>種別</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold whitespace-nowrap" style={{ color: '#64748B' }}>結果</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold whitespace-nowrap" style={{ color: '#64748B' }}>ターゲットKW</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold" style={{ color: '#64748B' }}>生成記事 / エラー内容</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold whitespace-nowrap" style={{ color: '#64748B' }}>WordPress</th>
+                </tr>
+              </thead>
+              <tbody>
+                {config.history.map((run, i) => (
+                  <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
+                    <td className="px-4 py-3 whitespace-nowrap" style={{ color: '#334155' }}>{formatRunDate(run.ranAt)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: 'rgba(20,44,92,0.06)', color: '#64748B' }}>
+                        {run.trigger === 'cron' ? '自動' : '手動'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span
+                        className="px-2 py-0.5 rounded-full text-[11px] font-bold"
+                        style={run.status === 'success'
+                          ? { background: 'rgba(22,163,74,0.1)', color: '#15803d' }
+                          : { background: 'rgba(229,62,79,0.1)', color: '#c02637' }}
+                      >
+                        {run.status === 'success' ? '成功' : '失敗'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap font-semibold" style={{ color: '#0A2540' }} title={run.keywordReason}>
+                      {run.keyword ?? '—'}
+                    </td>
+                    <td className="px-4 py-3" style={{ color: run.status === 'error' ? '#c02637' : '#334155' }}>
+                      <span className="line-clamp-2">{run.status === 'error' ? run.error : run.articleTitle}</span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {run.wordpressUrl ? (
+                        <a href={run.wordpressUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-bold underline" style={{ color: '#0080C0' }}>
+                          下書きを見る
+                        </a>
+                      ) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <p className="text-xs leading-relaxed rounded-xl px-4 py-3" style={{ background: 'rgba(100,116,139,0.06)', border: '1px solid #E2E8F0', color: '#64748B' }}>
+        生成された記事はWordPressに<strong>下書き</strong>として送信されます。内容を確認し、WordPress管理画面から公開してください（公開後は成果測定ページに自動反映されます）。
+        生成記事は「保存済み記事一覧」にも保存されるため、RASで編集・再投稿することもできます。
+      </p>
     </div>
   )
 }

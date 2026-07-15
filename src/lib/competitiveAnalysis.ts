@@ -111,10 +111,16 @@ export interface StrategyAction {
 export interface ActionPlanStep {
   /** 手順の見出し（例: 競合LPの訴求を棚卸し） */
   title: string
-  /** 具体的な作業内容 */
+  /** なぜこの手順が必要か（目的） */
+  purpose: string
+  /** 具体的な作業内容（何をどのツールでどうやるか） */
   detail: string
   /** この手順の成果物（例: 比較表, ワイヤーフレーム） */
   deliverable: string
+  /** この手順の完了条件 */
+  done: string
+  /** 目安工数（例: 2時間, 半日） */
+  effort: string
 }
 
 /** 施策カードをクリックしたときに展開する実行手順 */
@@ -741,7 +747,7 @@ export async function getAhrefsUsage() {
 
 interface ActionPlanResponse {
   goal?: string
-  steps?: Array<{ title?: string; detail?: string; deliverable?: string }>
+  steps?: Array<{ title?: string; purpose?: string; detail?: string; deliverable?: string; done?: string; effort?: string }>
   resources?: string[]
   successCriteria?: string
   estimatedPeriod?: string
@@ -750,22 +756,56 @@ interface ActionPlanResponse {
 
 /**
  * 施策カード1件について、具体的な実行手順（ToDo）をオンデマンド生成する。
- * 戦略レポート全体のサマリーをコンテキストに与え、RICE CLOUDの実務に落ちる
- * 手順・成果物・完了基準・期間・注意点まで構造化して返す。
+ * 戦略レポート・競合観測事実・KW機会・ペルソナをコンテキストに与え、
+ * 担当者がそのまま着手できるレベルの手順・成果物・完了基準まで構造化して返す。
  */
 export async function generateActionPlan(action: StrategyAction): Promise<ActionPlan> {
-  const doc = await loadCompetitiveAnalysis()
-  const reportSummary = doc.report?.summary ?? ''
-  const parsed = await generateJson<ActionPlanResponse>(`あなたはERP/SaaS導入支援会社「株式会社RICE CLOUD（ライスクラウド）」のマーケ戦略ディレクターです。
-以下の「施策」を、担当者がそのまま着手できる具体的な実行手順（ToDo）に分解してください。
-一般論（丁寧に、質を高く等）は禁止。対象ページ/KW/ツール/成果物まで具体化してください。
-RICE CLOUDの強み: アジャイル型ERP導入・導入失敗案件のリカバリー実績・NetSuite/Dynamics 365/Power Platform実装力。
-※GA4/Search Consoleは未連携のため、実測が前提の手順には「要計測環境」と補足してください。
+  const [doc, config, personas] = await Promise.all([
+    loadCompetitiveAnalysis(),
+    loadCompetitorConfig(),
+    loadPersonaDocument().catch(() => null),
+  ])
+  const report = doc.report
+  const opportunities = await buildKeywordOpportunities(doc).catch(() => [])
 
+  const competitorFacts = collectFacts(config, doc)
+  const kwText = opportunities.slice(0, 10)
+    .map(k => `「${k.keyword}」(月間${k.volume}回, ${k.opportunity === 'gap' ? '自社未露出' : '自社弱い'}, 競合: ${k.competitors.map(c => `${c.name}${c.position != null ? `${c.position}位` : ''}`).join('・')})`)
+    .join('\n') || '（KW機会データなし）'
+  const personaText = personas
+    ? personas.personas.slice(0, 3).map(p => `${p.name}: 課題=${p.pains.slice(0, 3).join('、')} / 判断基準=${p.decisionCriteria.slice(0, 3).join('、')}`).join('\n')
+    : '（ペルソナ未生成）'
+
+  const parsed = await generateJson<ActionPlanResponse>(`あなたはERP/SaaS導入支援会社「株式会社RICE CLOUD（ライスクラウド）」のマーケティング実行支援コンサルタントです。
+以下の「施策」を、マーケ専任者がいない会社の担当者でも迷わず着手できる実行手順（ToDo）に分解してください。
+
+# 絶対に守るルール
+- 抽象的な動詞（検討する・整理する・強化する・意識する 等）は禁止。必ず「何を・どのツールで・どう操作して・何を作るか」まで書く
+- 専門用語には短い補足を付ける（例: 「メタディスクリプション（検索結果に出る説明文）」）
+- 各手順は前の手順の成果物を使う流れにし、順番に実行すれば施策が完了する構成にする
+- 手順には社内RASツール（記事を作成ページ・KW分析ページ・競合分析ページ）を使える場面では明示的に組み込む
+- 数値を伴う判断基準を入れる（例: 「上位10記事のうち7記事が事例形式なら事例型で作る」）
+- GA4/Search Consoleは未連携のため、実測が前提の手順には「（要計測環境）」と付記する
+- 一般論・精神論・挨拶は一切書かない
+
+# RICE CLOUDの前提
+- 強み: アジャイル型ERP導入 / 導入失敗案件のリカバリー実績 / NetSuite・Dynamics 365・Power Platform実装力
+- 自社サイト: rice-cloud.info（WordPress運用、RASツールで記事作成・投稿が可能）
+
+# コンテキスト（この施策が生まれた背景データ）
 ## 全体戦略サマリー
-${reportSummary || '（サマリー未取得）'}
+${report?.summary || '（サマリー未取得）'}
 
-## 対象の施策
+## 競合の観測事実（公式サイト由来）
+${competitorFacts.slice(0, 3_000)}
+
+## 検索KW機会（Ahrefs: 競合が上位×自社が未露出/弱い）
+${kwText}
+
+## 仮説ペルソナ（想定読者・意思決定者）
+${personaText}
+
+# 対象の施策
 タイトル: ${action.title}
 概要: ${action.description}
 カテゴリ: ${action.category}
@@ -773,26 +813,30 @@ ${reportSummary || '（サマリー未取得）'}
 対象(URL/KW): ${action.target}
 追うKPI: ${action.kpi}
 
-出力は簡潔に。stepsは3〜7件、各detailは120字以内、resources/risksは各4件以内。文字列中の改行は禁止。
+# 出力形式
+stepsは5〜8件。各フィールドの文字数目安: purpose 60字以内 / detail 200字以内 / done 60字以内。文字列中の改行は禁止。
 JSONのみを返してください。末尾カンマは禁止です。
 {
- "goal":"この施策のゴール（1〜2文）",
- "steps":[{"title":"手順の見出し(20字以内)","detail":"具体的な作業内容","deliverable":"成果物"}],
- "resources":["必要なリソース・ツール・関係者"],
- "successCriteria":"完了の判断基準（定量的に）",
- "estimatedPeriod":"目安期間（例: 2〜3週間）",
- "risks":["つまずきやすい点・注意"]
-}`, 4_000)
+ "goal":"この施策で達成する状態（読者・数値の変化まで具体的に、1〜2文）",
+ "steps":[{"title":"手順の見出し(25字以内)","purpose":"なぜこの手順が必要か","detail":"何をどのツールでどう作業するか（具体的な操作・対象・数まで）","deliverable":"この手順で完成する成果物","done":"この手順の完了条件","effort":"目安工数（例: 2時間）"}],
+ "resources":["必要なリソース・ツール・関係者（具体名で）"],
+ "successCriteria":"施策全体の完了判断基準（できる限り定量的に）",
+ "estimatedPeriod":"全体の目安期間（例: 2〜3週間）",
+ "risks":["つまずきやすい点と回避策（〜の場合は〜する、の形式）"]
+}`, 6_000)
 
   const steps: ActionPlanStep[] = Array.isArray(parsed.steps)
     ? parsed.steps
         .filter(s => s && (typeof s.title === 'string' || typeof s.detail === 'string'))
         .map(s => ({
           title: (s.title ?? '').trim(),
+          purpose: (s.purpose ?? '').trim(),
           detail: (s.detail ?? '').trim(),
           deliverable: (s.deliverable ?? '').trim(),
+          done: (s.done ?? '').trim(),
+          effort: (s.effort ?? '').trim(),
         }))
-        .slice(0, 7)
+        .slice(0, 8)
     : []
   if (steps.length === 0) throw new Error('実行手順の生成に失敗しました')
 
