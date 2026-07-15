@@ -6,6 +6,7 @@ import { ArticleSummary } from '@/lib/types'
 import { getArticleSummaries, getArticleById, deleteArticle, patchArticle } from '@/lib/articleStorage'
 import { applyInternalLinksToText } from '@/lib/internalLinks'
 import { setSessionPreviewImage } from '@/lib/sessionPreviewImage'
+import PageGroupTabs from '@/components/PageGroupTabs'
 import {
   FileText,
   Trash2,
@@ -142,6 +143,7 @@ export default function ArticlesPage() {
 
   return (
     <div className="w-full pt-6 pb-16 px-4 max-w-7xl mx-auto">
+      <PageGroupTabs group="articles" />
       {deleteTargetId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
           <div

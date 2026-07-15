@@ -6,6 +6,7 @@ import { Upload, X, Search, Sparkles, Globe, TrendingUp, TrendingDown, Minus, Re
 import type { AhrefsDataset, AhrefsDatasetType } from '@/lib/ahrefsCsvParser'
 import { analyzeKeywords, detectTrends, getCategoryCounts, mergeAndAnalyze, type ScoredKeyword, type TrendKeyword, type CategoryCount, type PriorityLevel } from '@/lib/ahrefsAnalyzer'
 import type { ArticleSummary } from '@/lib/types'
+import PageGroupTabs from '@/components/PageGroupTabs'
 
 const PAGE_SIZE = 50
 
@@ -410,6 +411,7 @@ export default function AhrefsPage() {
       onDragLeave={() => setDragOver(false)}
       onDrop={e => { e.preventDefault(); setDragOver(false); handleUpload(e.dataTransfer.files) }}
     >
+      <PageGroupTabs group="analysis" />
       {dragOver && (
         <div className="fixed inset-0 bg-[#009AE0]/10 border-2 border-dashed border-[#009AE0] rounded-xl z-50 pointer-events-none flex items-center justify-center">
           <p className="text-[#009AE0] font-semibold text-lg">CSVをドロップしてインポート</p>

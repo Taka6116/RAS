@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Trash2, X, Check, Loader2 } from 'lucide-react'
 import { SavedKeyword, getAllKeywords, saveKeyword, deleteKeyword } from '@/lib/keywordStorage'
 import Button from '@/components/ui/Button'
+import PageGroupTabs from '@/components/PageGroupTabs'
 
 export default function KeywordsPage() {
   const [keywords, setKeywords] = useState<SavedKeyword[]>([])
@@ -95,6 +96,7 @@ export default function KeywordsPage() {
 
   return (
     <div className="w-full py-8 max-w-4xl mx-auto">
+      <PageGroupTabs group="library" />
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-[#1A1A2E] mb-2">キーワードライブラリ</h1>

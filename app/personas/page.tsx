@@ -24,6 +24,7 @@ import {
   Megaphone,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import PageGroupTabs from '@/components/PageGroupTabs'
 
 interface PersonaJourneyStage {
   phase: string
@@ -214,6 +215,7 @@ export default function PersonasPage() {
 
   return (
     <div className="w-full py-8 max-w-5xl mx-auto">
+      <PageGroupTabs group="analysis" />
       {/* ── ヘッダー ─────────────────────────────── */}
       <div className="flex items-start justify-between flex-wrap gap-3 mb-1">
         <h1 className="text-xl font-bold flex items-center gap-2" style={{ color: INK }}>

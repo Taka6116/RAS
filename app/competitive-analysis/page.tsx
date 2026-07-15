@@ -31,6 +31,7 @@ import type {
   StrategyPriority,
   StrategyPhase,
 } from '@/lib/competitiveAnalysis'
+import PageGroupTabs from '@/components/PageGroupTabs'
 
 type Tab = 'competitors' | 'comparison' | 'strategy'
 
@@ -298,6 +299,7 @@ export default function CompetitiveAnalysisPage() {
 
   return (
     <div className="w-full py-8 max-w-6xl mx-auto">
+      <PageGroupTabs group="analysis" />
       <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2" style={{ color: '#1A1A2E' }}>

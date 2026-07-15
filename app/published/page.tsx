@@ -6,6 +6,7 @@ import { ArticleSummary, SavedArticle } from '@/lib/types'
 import { getArticleSummaries, getArticleById, saveArticle, deleteArticle } from '@/lib/articleStorage'
 import { applyInternalLinksToText } from '@/lib/internalLinks'
 import { setSessionPreviewImage } from '@/lib/sessionPreviewImage'
+import PageGroupTabs from '@/components/PageGroupTabs'
 import {
   FileText,
   ExternalLink,
@@ -140,6 +141,7 @@ export default function PublishedArticlesPage() {
 
   return (
     <div className="w-full pt-6 pb-16 px-4 max-w-7xl mx-auto">
+      <PageGroupTabs group="articles" />
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold" style={{ color: '#1A1A2E' }}>

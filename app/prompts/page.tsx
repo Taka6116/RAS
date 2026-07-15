@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Pencil, Trash2, X, Check, Loader2 } from 'lucide-react'
 import { SavedPrompt, getAllPrompts, savePrompt, deletePrompt } from '@/lib/promptStorage'
 import Button from '@/components/ui/Button'
+import PageGroupTabs from '@/components/PageGroupTabs'
 
 export default function PromptsPage() {
   const [prompts, setPrompts] = useState<SavedPrompt[]>([])
@@ -95,6 +96,7 @@ export default function PromptsPage() {
 
   return (
     <div className="w-full py-8 max-w-4xl mx-auto">
+      <PageGroupTabs group="library" />
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-[#1A1A2E] mb-2">プロンプトライブラリ</h1>

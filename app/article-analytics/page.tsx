@@ -18,6 +18,7 @@ import {
   type FunnelStage,
 } from '@/lib/contentPortfolio'
 import type { ArticleSummary } from '@/lib/types'
+import PageGroupTabs from '@/components/PageGroupTabs'
 
 const STAGES: FunnelStage[] = ['awareness', 'research', 'comparison', 'decision']
 
@@ -146,6 +147,7 @@ export default function ArticleAnalyticsPage() {
 
   return (
     <div className="w-full max-w-6xl py-8">
+      <PageGroupTabs group="analysis" />
       <div className="flex flex-wrap items-start justify-between gap-4 mb-2">
         <div>
           <h1 className="text-2xl font-bold text-[#1A1A2E] flex items-center gap-2">

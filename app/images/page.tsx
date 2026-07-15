@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Image from 'next/image'
 import { ImageIcon, Trash2, Calendar, Search, Download, Upload, X, Sparkles } from 'lucide-react'
+import PageGroupTabs from '@/components/PageGroupTabs'
 
 type ImageSource = 'generated' | 'imported'
 
@@ -169,6 +170,7 @@ export default function ImagesPage() {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      <PageGroupTabs group="library" />
       {dragOver && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#009AE0]/10 border-4 border-dashed border-[#009AE0] pointer-events-none">
           <p className="text-[#009AE0] text-xl font-bold drop-shadow">ここに画像をドロップしてインポート（複数可）</p>

@@ -12,6 +12,7 @@ import {
   RefreshCw,
   TrendingUp,
 } from 'lucide-react'
+import PageGroupTabs from '@/components/PageGroupTabs'
 
 interface PerformancePoint {
   date: string
@@ -164,6 +165,7 @@ export default function PerformancePage() {
 
   return (
     <div className="w-full max-w-6xl py-8">
+      <PageGroupTabs group="analysis" />
       <div className="mb-2 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-[#1A1A2E]">

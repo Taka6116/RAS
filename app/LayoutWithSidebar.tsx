@@ -50,22 +50,15 @@ export default function LayoutWithSidebar({
         {/* ナビゲーション */}
         <nav className="scrollbar-none flex-1 px-3 py-4 text-sm space-y-1 overflow-y-auto">
           {[
-            { href: '/home',      label: 'ホーム' },
-            { href: '/editor',    label: '記事を作成' },
-            { href: '/articles',  label: '保存済み記事一覧' },
-            { href: '/published', label: '過去投稿済み記事一覧' },
-            { href: '/images',    label: '画像' },
-            { href: '/schedule',  label: '投稿スケジュール' },
-            { href: '/prompts',   label: 'プロンプト' },
-            { href: '/keywords',  label: 'キーワード' },
-            { href: '/ahrefs',    label: 'KW分析' },
-            { href: '/article-analytics',    label: '記事分析' },
-            { href: '/competitive-analysis', label: '競合分析' },
-            { href: '/personas',  label: '仮説ペルソナ' },
-            { href: '/performance', label: '成果測定' },
-            { href: '/notice',    label: '注意書き' },
-          ].map(({ href, label }) => {
-            const isActive = pathname === href || pathname.startsWith(href + '/')
+            { href: '/home', label: 'ホーム', paths: ['/home'] },
+            { href: '/editor', label: '記事を作成', paths: ['/editor'] },
+            { href: '/articles', label: '記事一覧', paths: ['/articles', '/published'] },
+            { href: '/schedule', label: '投稿スケジュール', paths: ['/schedule'] },
+            { href: '/images', label: '素材', paths: ['/images', '/prompts', '/keywords'] },
+            { href: '/ahrefs', label: '分析', paths: ['/ahrefs', '/article-analytics', '/competitive-analysis', '/personas', '/performance'] },
+            { href: '/notice', label: '注意書き', paths: ['/notice'] },
+          ].map(({ href, label, paths }) => {
+            const isActive = paths.some(path => pathname === path || pathname.startsWith(path + '/'))
             return (
               <Link
                 key={href}
