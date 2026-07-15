@@ -125,7 +125,10 @@ export async function fetchOrganicKeywords(options: AhrefsApiOptions = {}): Prom
 
   const params = new URLSearchParams({
     target,
-    mode:    'domain',
+    // 'domain' は指定ホスト配下のみ（www等のサブドメインを含まない）ため、
+    // www運用のサイトが0件になる。Ahrefs標準の 'subdomains'（*.domain/*）を使い、
+    // www含む全サブドメインを対象にする。
+    mode:    'subdomains',
     country,
     date,
     limit:   String(Math.min(limit, 1000)),

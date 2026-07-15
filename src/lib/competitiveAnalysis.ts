@@ -168,7 +168,9 @@ export const DEFAULT_COMPETITORS: CompetitorConfig[] = [
   {
     id: 'moneyforward',
     name: 'マネーフォワード クラウドERP',
-    domain: 'moneyforward.com',
+    // apex(moneyforward.com)はB2C家計簿アプリのKWが支配的なため、
+    // 法人向けサブドメインに絞ってERP戦略に関連するKWを取得する。
+    domain: 'biz.moneyforward.com',
     type: 'indirect',
     note: '中堅・上場企業向けのクラウド型バックオフィスSaaS群。',
     urls: [{ url: 'https://biz.moneyforward.com/', label: 'ビジネス向けトップ' }],
@@ -291,12 +293,27 @@ ${raw.slice(0, 24_000)}`,
   throw new Error(`AI分析の生成に失敗しました: ${lastError instanceof Error ? lastError.message : String(lastError)}`)
 }
 
+/**
+ * 保存済み設定の移行。
+ * マネーフォワードの対象ドメインを apex(moneyforward.com) から
+ * 法人向けサブドメイン(biz.moneyforward.com)へ寄せ、B2CノイズKWを避ける。
+ */
+function migrateCompetitorConfig(config: CompetitorConfig[]): CompetitorConfig[] {
+  return config.map(c =>
+    c.id === 'moneyforward' && c.domain === 'moneyforward.com'
+      ? { ...c, domain: 'biz.moneyforward.com' }
+      : c,
+  )
+}
+
 export async function loadCompetitorConfig(): Promise<CompetitorConfig[]> {
   const obj = await getS3ObjectAsText(CONFIG_KEY)
   if (!obj) return DEFAULT_COMPETITORS
   try {
     const parsed = JSON.parse(obj.content)
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed as CompetitorConfig[] : DEFAULT_COMPETITORS
+    return Array.isArray(parsed) && parsed.length > 0
+      ? migrateCompetitorConfig(parsed as CompetitorConfig[])
+      : DEFAULT_COMPETITORS
   } catch {
     return DEFAULT_COMPETITORS
   }
