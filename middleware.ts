@@ -17,7 +17,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  if (pathname.startsWith('/api/auth/') || pathname.startsWith('/_next') || pathname.startsWith('/favicon')) {
+  // Vercel Cron はブラウザのログインCookieを持たない。
+  // cronルートはルート自身で CRON_SECRET のBearer認証を厳密に検証するため、
+  // ここではアプリログイン認証だけをバイパスして到達可能にする。
+  if (
+    pathname === '/api/auto-draft/cron' ||
+    pathname.startsWith('/api/auth/') ||
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/favicon')
+  ) {
     return NextResponse.next()
   }
 
