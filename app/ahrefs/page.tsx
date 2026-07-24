@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Upload, X, Search, Sparkles, Globe, TrendingUp, TrendingDown, Minus, RefreshCw } from 'lucide-react'
+import { Upload, X, Search, Sparkles, Globe, TrendingUp, TrendingDown, Minus, RefreshCw, ChevronDown, Database, SlidersHorizontal } from 'lucide-react'
 import type { AhrefsDataset, AhrefsDatasetType } from '@/lib/ahrefsCsvParser'
 import { analyzeKeywords, detectTrends, getCategoryCounts, mergeAndAnalyze, type ScoredKeyword, type TrendKeyword, type CategoryCount, type PriorityLevel } from '@/lib/ahrefsAnalyzer'
 import type { ArticleSummary } from '@/lib/types'
@@ -239,6 +239,8 @@ export default function AhrefsPage() {
   const [selectedPriority, setSelectedPriority] = useState<'all' | PriorityLevel>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [showCount, setShowCount] = useState(PAGE_SIZE)
+  const [showDatasetDetails, setShowDatasetDetails] = useState(false)
+  const [showAllCategories, setShowAllCategories] = useState(false)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -458,13 +460,6 @@ export default function AhrefsPage() {
         </div>
       </div>
 
-      {apiStatus?.configured && (
-        <p className="mb-4 text-xs text-[#64748B]">
-          API接続先: <span className="font-semibold text-[#0A2540]">{apiStatus.domain}</span>
-          {' '}（{apiStatus.country.toUpperCase()}）・自社流入KWは最大{apiStatus.maxRows}件を取得
-        </p>
-      )}
-
       {error && (
         <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800 flex items-start gap-2">
           <X size={16} className="flex-shrink-0 mt-0.5" />
@@ -478,33 +473,62 @@ export default function AhrefsPage() {
         </div>
       )}
 
-      {/* Dataset badges */}
-      {index.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-6">
-          {index.map(m => (
-            <span
-              key={m.id}
-              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${
-                m.type === 'organic'
-                  ? 'bg-purple-50 text-purple-700 border-purple-200'
-                  : 'bg-blue-50 text-blue-700 border-blue-200'
-              }`}
-            >
-              <span className="font-bold">{m.type === 'organic' ? '自社流入' : 'KW'}</span>
-              <span className="truncate max-w-[200px]">{m.fileName.replace(/\.csv$/i, '')}</span>
-              <span>{fmtNum(m.rowCount)}件</span>
-              <span>{fmtDate(m.uploadedAt)}</span>
+      {/* データソースは通常1行に圧縮。個別ファイルの確認・削除時だけ展開する。 */}
+      {(apiStatus?.configured || index.length > 0) && (
+        <section className="mb-5 rounded-xl border border-[#D0E3F0] bg-white px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#64748B]">
+              <span className="inline-flex items-center gap-1.5 font-bold text-[#334155]">
+                <Database size={14} className="text-[#009AE0]" />データソース
+              </span>
+              {apiStatus?.configured && (
+                <span>
+                  {apiStatus.domain} / {apiStatus.country.toUpperCase()} / 自社流入KW 最大{apiStatus.maxRows}件
+                </span>
+              )}
+              {index.length > 0 && (
+                <span>
+                  自社流入 {fmtNum(index.filter(m => m.type === 'organic').reduce((sum, m) => sum + m.rowCount, 0))}件
+                  <span className="mx-1 text-[#CBD5E1]">・</span>
+                  KWデータ {fmtNum(index.filter(m => m.type === 'keywords').reduce((sum, m) => sum + m.rowCount, 0))}件
+                  <span className="mx-1 text-[#CBD5E1]">・</span>
+                  {index.length}データセット
+                </span>
+              )}
+            </div>
+            {index.length > 0 && (
               <button
                 type="button"
-                onClick={e => { e.stopPropagation(); handleDeleteDataset(m.id) }}
-                className="ml-0.5 hover:text-red-600 transition-colors"
-                title="削除"
+                onClick={() => setShowDatasetDetails(value => !value)}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-[#009AE0] hover:bg-[#F0F7FC]"
               >
-                <X size={14} />
+                {showDatasetDetails ? '詳細を閉じる' : '詳細を見る'}
+                <ChevronDown size={14} className={showDatasetDetails ? 'rotate-180 transition-transform' : 'transition-transform'} />
               </button>
-            </span>
-          ))}
-        </div>
+            )}
+          </div>
+          {showDatasetDetails && (
+            <div className="mt-3 grid gap-2 border-t border-[#E7F0F6] pt-3">
+              {index.map(m => (
+                <div key={m.id} className="flex min-w-0 items-center gap-3 rounded-lg bg-[#F8FAFC] px-3 py-2 text-xs">
+                  <span className={`rounded px-1.5 py-0.5 font-bold ${m.type === 'organic' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                    {m.type === 'organic' ? '自社流入' : 'KW'}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-medium text-[#334155]">{m.fileName.replace(/\.csv$/i, '')}</span>
+                  <span className="flex-shrink-0 text-[#64748B]">{fmtNum(m.rowCount)}件 / {fmtDate(m.uploadedAt)}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteDataset(m.id)}
+                    className="flex-shrink-0 rounded p-1 text-[#94A3B8] hover:bg-red-50 hover:text-red-600"
+                    title="このデータセットを削除"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
       {loading && !hasData && (
@@ -531,64 +555,7 @@ export default function AhrefsPage() {
             <SummaryCard label="トレンドKW" value={fmtNum(trendCount)} accent="green" />
           </div>
 
-          {/* Priority pills (hidden on trends tab) */}
-          {activeTab !== 'trends' && (
-            <div className="flex flex-wrap gap-2 mb-3">
-              {([
-                { key: 'all' as const, label: 'すべて', count: activeData.length },
-                { key: 3 as PriorityLevel, label: '★★★ 即攻め', count: p3Count },
-                { key: 2 as PriorityLevel, label: '★★ 有望', count: p2Count },
-                { key: 1 as PriorityLevel, label: '★ 余力', count: activeData.filter(k => k.priority === 1).length },
-                { key: 0 as PriorityLevel, label: '対象外', count: activeData.filter(k => k.priority === 0).length },
-              ]).map(p => (
-                <button
-                  key={String(p.key)}
-                  type="button"
-                  onClick={() => setSelectedPriority(selectedPriority === p.key ? 'all' : p.key)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                    selectedPriority === p.key
-                      ? p.key === 3 ? 'bg-amber-500 text-white border-amber-500'
-                        : p.key === 2 ? 'bg-blue-500 text-white border-blue-500'
-                        : 'bg-[#009AE0] text-white border-[#009AE0]'
-                      : 'bg-white text-[#475569] border-[#D0E3F0] hover:border-[#009AE0]'
-                  }`}
-                >
-                  {p.label} ({fmtNum(p.count)})
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Category pills */}
-          <div className="flex flex-wrap gap-2 mb-5">
-            <button
-              type="button"
-              onClick={() => setSelectedCategory('all')}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                selectedCategory === 'all'
-                  ? 'bg-[#009AE0] text-white border-[#009AE0]'
-                  : 'bg-white text-[#475569] border-[#D0E3F0] hover:border-[#009AE0]'
-              }`}
-            >
-              すべて ({fmtNum(activeData.length)})
-            </button>
-            {categoryCounts.map(cc => (
-              <button
-                key={cc.category}
-                type="button"
-                onClick={() => setSelectedCategory(selectedCategory === cc.category ? 'all' : cc.category)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                  selectedCategory === cc.category
-                    ? 'bg-[#009AE0] text-white border-[#009AE0]'
-                    : 'bg-white text-[#475569] border-[#D0E3F0] hover:border-[#009AE0]'
-                }`}
-              >
-                {cc.category} ({fmtNum(cc.count)})
-              </button>
-            ))}
-          </div>
-
-          {/* Tabs */}
+          {/* まず「何を見るか」を選び、次に優先度・カテゴリで絞り込む。 */}
           <div className="flex items-center gap-1 mb-4 border-b border-[#D0E3F0]">
             {([
               { key: 'opportunity' as TabKey, label: '狙い目KW' },
@@ -614,17 +581,88 @@ export default function AhrefsPage() {
             ))}
           </div>
 
-          {/* Search bar (shared across all tabs) */}
-          <div className="relative mb-4">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="キーワードを検索..."
-              className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border border-[#D0E3F0] bg-white focus:outline-none focus:ring-2 focus:ring-[#009AE0]/30"
-            />
-          </div>
+          {/* フィルタは1つのパネルに集約。カテゴリは上位5件だけを初期表示する。 */}
+          <section className="mb-5 rounded-xl border border-[#D0E3F0] bg-white p-4">
+            <div className="mb-3 flex items-center gap-1.5 text-xs font-bold text-[#475569]">
+              <SlidersHorizontal size={14} className="text-[#009AE0]" />絞り込み
+            </div>
+            {activeTab !== 'trends' && (
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <span className="mr-1 text-[11px] font-semibold text-[#94A3B8]">優先度</span>
+                {([
+                  { key: 'all' as const, label: 'すべて', count: activeData.length },
+                  { key: 3 as PriorityLevel, label: '★★★ 即攻め', count: p3Count },
+                  { key: 2 as PriorityLevel, label: '★★ 有望', count: p2Count },
+                  { key: 1 as PriorityLevel, label: '★ 余力', count: activeData.filter(k => k.priority === 1).length },
+                  { key: 0 as PriorityLevel, label: '対象外', count: activeData.filter(k => k.priority === 0).length },
+                ]).map(p => (
+                  <button
+                    key={String(p.key)}
+                    type="button"
+                    onClick={() => setSelectedPriority(selectedPriority === p.key ? 'all' : p.key)}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      selectedPriority === p.key
+                        ? p.key === 3 ? 'border-amber-500 bg-amber-500 text-white'
+                          : p.key === 2 ? 'border-blue-500 bg-blue-500 text-white'
+                          : 'border-[#009AE0] bg-[#009AE0] text-white'
+                        : 'border-[#D0E3F0] bg-white text-[#475569] hover:border-[#009AE0]'
+                    }`}
+                  >
+                    {p.label} ({fmtNum(p.count)})
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="mr-1 text-[11px] font-semibold text-[#94A3B8]">カテゴリ</span>
+              <button
+                type="button"
+                onClick={() => setSelectedCategory('all')}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  selectedCategory === 'all'
+                    ? 'border-[#009AE0] bg-[#009AE0] text-white'
+                    : 'border-[#D0E3F0] bg-white text-[#475569] hover:border-[#009AE0]'
+                }`}
+              >
+                すべて ({fmtNum(activeData.length)})
+              </button>
+              {(showAllCategories ? categoryCounts : categoryCounts.slice(0, 5)).map(cc => (
+                <button
+                  key={cc.category}
+                  type="button"
+                  onClick={() => setSelectedCategory(selectedCategory === cc.category ? 'all' : cc.category)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    selectedCategory === cc.category
+                      ? 'border-[#009AE0] bg-[#009AE0] text-white'
+                      : 'border-[#D0E3F0] bg-white text-[#475569] hover:border-[#009AE0]'
+                  }`}
+                >
+                  {cc.category} ({fmtNum(cc.count)})
+                </button>
+              ))}
+              {categoryCounts.length > 5 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllCategories(value => !value)}
+                  className="rounded-full px-2 py-1.5 text-xs font-semibold text-[#009AE0] hover:bg-[#F0F7FC]"
+                >
+                  {showAllCategories ? '閉じる' : `その他 ${categoryCounts.length - 5}件`}
+                </button>
+              )}
+            </div>
+
+            <div className="relative mt-3">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="キーワードを検索..."
+                className="w-full rounded-lg border border-[#D0E3F0] bg-[#F8FAFC] py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-[#009AE0]/30"
+              />
+            </div>
+          </section>
 
           {/* Trends tab */}
           {activeTab === 'trends' ? (
